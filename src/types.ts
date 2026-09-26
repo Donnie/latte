@@ -27,8 +27,12 @@ export type ChatStore = Record<string, ChatLog>;
 
 export type Screen = "login" | "setup" | "chat";
 
+export type PendingKind = "grammar" | "translation";
+
 export interface Pending {
-  status: "loading" | "ready" | "error";
+  requestId: string;
+  kind: PendingKind;
+  status: "checking" | "loading" | "corrections" | "ready" | "error";
   sourceText: string;
   options: string[];
   error: string;

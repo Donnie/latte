@@ -10,6 +10,8 @@
   --danger: #b23c2e;
   --danger-soft: #fbeae7;
   --danger-border: #eed3cd;
+  --amber-soft: #fbf3e2;
+  --amber-border: #eddfc5;
   --radius: 14px;
   --shadow: 0 12px 32px rgba(51, 38, 26, 0.1);
 }

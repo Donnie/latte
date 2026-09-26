@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { languageName } from "../constants";
-import { fetchTranslationOptions } from "../lib/openrouter";
+import { fetchCorrectionOptions, fetchHasGrammarErrors, fetchTranslationOptions } from "../lib/openrouter";
 import type { ChatLog, ChatStore, Message, Pending, Settings, Side } from "../types";
 import ChatPane from "./ChatPane";
 import styles from "./ChatScreen.module.css";
@@ -36,20 +36,46 @@ export default function ChatScreen({
 
   const [pending, setPending] = useState<Partial<Record<Side, Pending>>>({});
   const controllers = useRef<Partial<Record<Side, AbortController>>>({});
+  const inputBlocked = pending.left !== undefined || pending.right !== undefined;
 
   async function handleSend(side: Side, text: string) {
-    appendMessage(side, text);
-    await translate(side, text);
+    await grammarCheck(side, text);
   }
 
-  async function handleRetry(targetSide: Side) {
-    const state = pending[targetSide];
-    if (state) await translate(otherSide(targetSide), state.sourceText);
-  }
+  async function grammarCheck(side: Side, text: string) {
+    const language = languageName(side === "left" ? settings.source : settings.target);
 
-  function handlePick(targetSide: Side, option: string) {
-    appendMessage(targetSide, option);
-    clearPending(targetSide);
+    controllers.current[side]?.abort();
+    const controller = new AbortController();
+    controllers.current[side] = controller;
+    const requestId = crypto.randomUUID();
+
+    setPendingFor(side, { requestId, kind: "grammar", status: "checking", sourceText: text, options: [], error: "" });
+
+    try {
+      const hasErrors = await fetchHasGrammarErrors({ apiKey, text, language, signal: controller.signal });
+      if (stopped(controller, side, requestId)) return;
+
+      if (!hasErrors) {
+        await postForTranslation(side, requestId, text);
+        return;
+      }
+
+      const options = await fetchCorrectionOptions({ apiKey, text, language, signal: controller.signal });
+      if (stopped(controller, side, requestId)) return;
+
+      setPendingFor(side, { requestId, kind: "grammar", status: "corrections", sourceText: text, options, error: "" });
+    } catch (error) {
+      if (stopped(controller, side, requestId)) return;
+      setPendingFor(side, {
+        requestId,
+        kind: "grammar",
+        status: "error",
+        sourceText: text,
+        options: [],
+        error: error instanceof Error ? error.message : "Something went wrong.",
+      });
+    }
   }
 
   async function translate(inputSide: Side, text: string) {
@@ -60,8 +86,16 @@ export default function ChatScreen({
     controllers.current[inputSide]?.abort();
     const controller = new AbortController();
     controllers.current[inputSide] = controller;
+    const requestId = crypto.randomUUID();
 
-    setPendingFor(targetSide, { status: "loading", sourceText: text, options: [], error: "" });
+    setPendingFor(targetSide, {
+      requestId,
+      kind: "translation",
+      status: "loading",
+      sourceText: text,
+      options: [],
+      error: "",
+    });
 
     try {
       const options = await fetchTranslationOptions({
@@ -72,11 +106,13 @@ export default function ChatScreen({
         formality: settings.formality,
         signal: controller.signal,
       });
-      if (controller.signal.aborted) return;
-      setPendingFor(targetSide, { status: "ready", sourceText: text, options, error: "" });
+      if (stopped(controller, targetSide, requestId)) return;
+      setPendingFor(targetSide, { requestId, kind: "translation", status: "ready", sourceText: text, options, error: "" });
     } catch (error) {
-      if (controller.signal.aborted) return;
+      if (stopped(controller, targetSide, requestId)) return;
       setPendingFor(targetSide, {
+        requestId,
+        kind: "translation",
         status: "error",
         sourceText: text,
         options: [],
@@ -85,8 +121,47 @@ export default function ChatScreen({
     }
   }
 
+  async function postForTranslation(side: Side, requestId: string, text: string) {
+    clearPendingIfCurrent(side, requestId);
+    appendMessage(side, text);
+    await translate(side, text);
+  }
+
+  async function handleRetry(side: Side) {
+    const state = pending[side];
+    if (!state) return;
+    if (state.kind === "grammar") {
+      await grammarCheck(side, state.sourceText);
+    } else {
+      await translate(otherSide(side), state.sourceText);
+    }
+  }
+
+  function handlePick(targetSide: Side, option: string) {
+    appendMessage(targetSide, option);
+    clearPending(targetSide);
+  }
+
+  function handlePickCorrection(side: Side, corrected: string) {
+    const state = pending[side];
+    if (!state) return;
+    void postForTranslation(side, state.requestId, corrected);
+  }
+
+  function handleSendOriginal(side: Side) {
+    const state = pending[side];
+    if (!state) return;
+    void postForTranslation(side, state.requestId, state.sourceText);
+  }
+
   function appendMessage(side: Side, text: string) {
     onAppendMessage(chatKey, { id: crypto.randomUUID(), side, text, createdAt: Date.now() });
+  }
+
+  function stopped(controller: AbortController, side: Side, requestId: string): boolean {
+    if (!controller.signal.aborted) return false;
+    clearPendingIfCurrent(side, requestId);
+    return true;
   }
 
   function setPendingFor(side: Side, value: Pending) {
@@ -95,6 +170,15 @@ export default function ChatScreen({
 
   function clearPending(side: Side) {
     setPending((prev) => {
+      const next = { ...prev };
+      delete next[side];
+      return next;
+    });
+  }
+
+  function clearPendingIfCurrent(side: Side, requestId: string) {
+    setPending((prev) => {
+      if (prev[side]?.requestId !== requestId) return prev;
       const next = { ...prev };
       delete next[side];
       return next;
@@ -136,8 +220,12 @@ export default function ChatScreen({
           language={languageName(settings.source)}
           messages={messages.filter((message) => message.side === "left")}
           pending={pending.left}
+          inputBlocked={inputBlocked}
           onSend={(text) => handleSend("left", text)}
           onPick={(option) => handlePick("left", option)}
+          onPickCorrection={(option) => handlePickCorrection("left", option)}
+          onSendOriginal={() => handleSendOriginal("left")}
+          onDismiss={() => clearPending("left")}
           onRetry={() => handleRetry("left")}
         />
         <ChatPane
@@ -145,8 +233,12 @@ export default function ChatScreen({
           language={languageName(settings.target)}
           messages={messages.filter((message) => message.side === "right")}
           pending={pending.right}
+          inputBlocked={inputBlocked}
           onSend={(text) => handleSend("right", text)}
           onPick={(option) => handlePick("right", option)}
+          onPickCorrection={(option) => handlePickCorrection("right", option)}
+          onSendOriginal={() => handleSendOriginal("right")}
+          onDismiss={() => clearPending("right")}
           onRetry={() => handleRetry("right")}
         />
       </main>

@@ -109,6 +109,79 @@
   align-self: stretch;
 }
 
+.boxLink {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  color: var(--muted);
+  font-size: 12.5px;
+  text-decoration: underline;
+}
+
+.boxLink:hover {
+  color: var(--accent-strong);
+}
+
+.correction {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--amber-soft);
+  border: 1px solid var(--amber-border);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.boxHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.boxTitle {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.boxClose {
+  background: none;
+  border: none;
+  color: var(--muted);
+  border-radius: 6px;
+  padding: 2px 7px;
+  line-height: 1;
+}
+
+.boxClose:hover {
+  color: var(--ink);
+  background: var(--accent-soft);
+}
+
+.correctionOption {
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--amber-border);
+  border-radius: 10px;
+  padding: 8px 11px;
+  font-size: 13.5px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.correctionOption:hover,
+.correctionOption:focus-visible {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
 .option {
   text-align: left;
   background: var(--surface);
@@ -153,6 +226,18 @@
   border: none;
   border-radius: 8px;
   padding: 6px 12px;
+}
+
+.errorActions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.errorSecondary {
+  background: none !important;
+  border: 1px solid var(--danger) !important;
+  color: var(--danger) !important;
 }
 
 .form {

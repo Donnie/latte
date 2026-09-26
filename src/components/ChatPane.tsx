@@ -7,15 +7,31 @@ interface ChatPaneProps {
   language: string;
   messages: Message[];
   pending?: Pending;
+  inputBlocked: boolean;
   onSend(text: string): void;
   onPick(option: string): void;
+  onPickCorrection(option: string): void;
+  onSendOriginal(): void;
+  onDismiss(): void;
   onRetry(): void;
 }
 
-export default function ChatPane({ side, language, messages, pending, onSend, onPick, onRetry }: ChatPaneProps) {
+export default function ChatPane({
+  side,
+  language,
+  messages,
+  pending,
+  inputBlocked,
+  onSend,
+  onPick,
+  onPickCorrection,
+  onSendOriginal,
+  onDismiss,
+  onRetry,
+}: ChatPaneProps) {
   const [draft, setDraft] = useState("");
   const listRef = useRef<HTMLDivElement | null>(null);
-  const isLoading = pending?.status === "loading";
+  const isBusy = pending?.status === "checking" || pending?.status === "loading";
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
@@ -24,9 +40,15 @@ export default function ChatPane({ side, language, messages, pending, onSend, on
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const text = draft.trim();
-    if (!text || isLoading) return;
+    if (!text || isBusy || inputBlocked) return;
     onSend(text);
     setDraft("");
+  }
+
+  function handleDismiss() {
+    const text = pending?.kind === "grammar" ? pending.sourceText : "";
+    onDismiss();
+    if (text) setDraft(text);
   }
 
   return (
@@ -51,11 +73,35 @@ export default function ChatPane({ side, language, messages, pending, onSend, on
           </div>
         ))}
 
-        {isLoading && (
+        {isBusy && (
           <div className={styles.typing} aria-live="polite">
             <span />
             <span />
             <span />
+          </div>
+        )}
+
+        {pending?.status === "corrections" && (
+          <div className={styles.correction}>
+            <div className={styles.boxHeader}>
+              <span className={styles.boxTitle}>Grammar suggestions</span>
+              <button type="button" className={styles.boxClose} onClick={handleDismiss} aria-label="Dismiss suggestions">
+                ✕
+              </button>
+            </div>
+            {pending.options.map((option, index) => (
+              <button
+                key={`${index}-${option}`}
+                type="button"
+                className={styles.correctionOption}
+                onClick={() => onPickCorrection(option)}
+              >
+                {option}
+              </button>
+            ))}
+            <button type="button" className={styles.boxLink} onClick={onSendOriginal}>
+              Send as is
+            </button>
           </div>
         )}
 
@@ -71,15 +117,25 @@ export default function ChatPane({ side, language, messages, pending, onSend, on
                 {option}
               </button>
             ))}
+            <button type="button" className={styles.boxLink} onClick={handleDismiss}>
+              None of these
+            </button>
           </div>
         )}
 
         {pending?.status === "error" && (
           <div className={styles.error} role="alert">
             <p>{pending.error}</p>
-            <button type="button" onClick={onRetry}>
-              Retry
-            </button>
+            <div className={styles.errorActions}>
+              {pending.kind === "grammar" && (
+                <button type="button" className={styles.errorSecondary} onClick={onSendOriginal}>
+                  Send as is
+                </button>
+              )}
+              <button type="button" onClick={onRetry}>
+                Retry
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -89,10 +145,10 @@ export default function ChatPane({ side, language, messages, pending, onSend, on
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           placeholder={`Write in ${language}…`}
-          disabled={isLoading}
+          disabled={isBusy || inputBlocked}
           aria-label={`Write in ${language}`}
         />
-        <button type="submit" disabled={isLoading || draft.trim() === ""}>
+        <button type="submit" disabled={isBusy || inputBlocked || draft.trim() === ""}>
           Send
         </button>
       </form>

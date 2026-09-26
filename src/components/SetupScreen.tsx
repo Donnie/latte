@@ -58,8 +58,8 @@ export default function SetupScreen({ initial, canCancel, onSave, onCancel }: Se
 
         {isInvalid && <p className={styles.warning}>Pick two different languages.</p>}
 
-        <div className={styles.formality} role="radiogroup" aria-label="Register">
-          <span className={styles.formalityLabel}>Register</span>
+        <div className={styles.formality} role="radiogroup" aria-label="Tonality">
+          <span className={styles.formalityLabel}>Tonality</span>
           <label className={styles.choice}>
             <input
               type="radio"

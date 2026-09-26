@@ -1,6 +1,7 @@
 import type { ChatStore, Language } from "./types";
 
 export const MODEL = "z-ai/glm-5.3-flash";
+export const GRAMMAR_MODEL = "typesafe/jev-router";
 export const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 export const OPTIONS_PER_REQUEST = 3;
 

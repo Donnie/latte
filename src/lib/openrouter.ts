@@ -1,15 +1,28 @@
-import { MODEL, OPENROUTER_URL, OPTIONS_PER_REQUEST } from "../constants";
+import { GRAMMAR_MODEL, MODEL, OPENROUTER_URL, OPTIONS_PER_REQUEST } from "../constants";
 import type { Formality } from "../types";
 
 export class OpenRouterError extends Error {}
 
-interface TranslationRequest {
+interface RequestBase {
   apiKey: string;
+  signal?: AbortSignal;
+}
+
+interface TranslationRequest extends RequestBase {
   text: string;
   sourceLanguage: string;
   targetLanguage: string;
   formality: Formality;
-  signal?: AbortSignal;
+}
+
+interface ProofreadRequest extends RequestBase {
+  text: string;
+  language: string;
+}
+
+interface ChatMessage {
+  role: "system" | "user";
+  content: string;
 }
 
 interface OpenRouterResponse {
@@ -17,44 +30,65 @@ interface OpenRouterResponse {
   choices?: Array<{ message?: { content?: unknown } }>;
 }
 
-export async function fetchTranslationOptions(request: TranslationRequest): Promise<string[]> {
-  const response = await fetch(OPENROUTER_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${request.apiKey}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": window.location.origin,
-      "X-Title": "Latte Translator",
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      messages: [
-        { role: "system", content: buildSystemPrompt(request) },
-        { role: "user", content: request.text },
-      ],
-      temperature: 0.8,
-    }),
-    signal: request.signal,
-  });
+export async function fetchHasGrammarErrors(request: ProofreadRequest): Promise<boolean> {
+  const content = await requestCompletion(
+    request,
+    GRAMMAR_MODEL,
+    [
+      { role: "system", content: GRAMMAR_CHECK_PROMPT },
+      { role: "user", content: `Language: ${request.language}\nText: ${request.text}` },
+    ],
+  );
+  return parseHasErrors(content);
+}
 
-  if (!response.ok) {
-    throw new OpenRouterError(await describeHttpError(response));
-  }
-
-  const payload = (await response.json()) as OpenRouterResponse;
-  if (payload.error) {
-    throw new OpenRouterError(payload.error.message ?? "OpenRouter returned an error.");
-  }
-
-  const content = payload.choices?.[0]?.message?.content;
-  if (typeof content !== "string") {
-    throw new OpenRouterError("Unexpected response from OpenRouter.");
-  }
-
+export async function fetchCorrectionOptions(request: ProofreadRequest): Promise<string[]> {
+  const content = await requestCompletion(
+    request,
+    MODEL,
+    [
+      { role: "system", content: buildCorrectionPrompt(request.language) },
+      { role: "user", content: request.text },
+    ],
+    0.3,
+  );
   return parseOptions(content);
 }
 
-function buildSystemPrompt(request: TranslationRequest): string {
+export async function fetchTranslationOptions(request: TranslationRequest): Promise<string[]> {
+  const content = await requestCompletion(
+    request,
+    MODEL,
+    [
+      { role: "system", content: buildTranslationPrompt(request) },
+      { role: "user", content: request.text },
+    ],
+    0.8,
+  );
+  return parseOptions(content);
+}
+
+const GRAMMAR_CHECK_PROMPT = [
+  "You are a strict grammar, spelling and punctuation checker.",
+  "Decide whether the user's text contains at least one real mistake in the given language.",
+  "Only count real mistakes: wrong spelling, grammar or punctuation.",
+  "Ignore intentional slang, names, quotes, URLs, code and stylistic choices.",
+  'Reply with strict JSON only, no markdown: {"hasErrors": true} when there is at least one mistake, {"hasErrors": false} when the text is clean.',
+].join(" ");
+
+function buildCorrectionPrompt(language: string): string {
+  return [
+    "You are a proofreading assistant.",
+    `Correct the user's text written in ${language}: fix spelling, grammar and punctuation.`,
+    "Preserve meaning, tone and wording; do not add or remove information.",
+    `Give up to ${OPTIONS_PER_REQUEST} corrected versions, all equally valid, varying only in minor punctuation or phrasing choices.`,
+    "Keep names, numbers, URLs and code unchanged.",
+    "Reply with strict JSON only, no markdown, exactly in this shape:",
+    '{"options": ["<correction 1>", "<correction 2>", "<correction 3>"]}',
+  ].join(" ");
+}
+
+function buildTranslationPrompt(request: TranslationRequest): string {
   const register =
     request.formality === "formal"
       ? "formal and polite (e.g. the 'Sie'/'vous' register where the language distinguishes)"
@@ -71,6 +105,47 @@ function buildSystemPrompt(request: TranslationRequest): string {
   ].join(" ");
 }
 
+async function requestCompletion(
+  request: RequestBase,
+  model: string,
+  messages: ChatMessage[],
+  temperature?: number,
+): Promise<string> {
+  const body: Record<string, unknown> = { model, messages };
+  if (temperature !== undefined) body.temperature = temperature;
+
+  const response = await fetch(OPENROUTER_URL, {
+    method: "POST",
+    headers: buildHeaders(request.apiKey),
+    body: JSON.stringify(body),
+    signal: request.signal,
+  });
+
+  if (!response.ok) {
+    throw new OpenRouterError(await describeHttpError(response));
+  }
+
+  const payload = (await response.json()) as OpenRouterResponse;
+  if (payload.error) {
+    throw new OpenRouterError(payload.error.message ?? "OpenRouter returned an error.");
+  }
+
+  const content = payload.choices?.[0]?.message?.content;
+  if (typeof content !== "string") {
+    throw new OpenRouterError("Unexpected response from OpenRouter.");
+  }
+  return content;
+}
+
+function buildHeaders(apiKey: string): HeadersInit {
+  return {
+    Authorization: `Bearer ${apiKey}`,
+    "Content-Type": "application/json",
+    "HTTP-Referer": window.location.origin,
+    "X-Title": "Latte Translator",
+  };
+}
+
 async function describeHttpError(response: Response): Promise<string> {
   let detail = response.statusText || "request failed";
   try {
@@ -81,6 +156,19 @@ async function describeHttpError(response: Response): Promise<string> {
   }
   if (response.status === 401) return `Invalid API key — ${detail}`;
   return `OpenRouter error ${response.status} — ${detail}`;
+}
+
+function parseHasErrors(content: string): boolean {
+  const jsonText = extractJson(content);
+  if (jsonText) {
+    try {
+      const parsed = JSON.parse(jsonText) as { hasErrors?: unknown };
+      if (typeof parsed.hasErrors === "boolean") return parsed.hasErrors;
+    } catch {
+      return /\btrue\b/i.test(content);
+    }
+  }
+  return /\btrue\b/i.test(content);
 }
 
 function parseOptions(raw: string): string[] {
