@@ -10,6 +10,7 @@ interface ChatScreenProps {
   apiKey: string;
   chats: ChatStore;
   onAppendMessage(chatKey: string, message: Message): void;
+  onSettingsChange(settings: Settings): void;
   onOpenSettings(): void;
   onLogout(): void;
 }
@@ -27,6 +28,7 @@ export default function ChatScreen({
   apiKey,
   chats,
   onAppendMessage,
+  onSettingsChange,
   onOpenSettings,
   onLogout,
 }: ChatScreenProps) {
@@ -39,7 +41,18 @@ export default function ChatScreen({
   const inputBlocked = pending.left !== undefined || pending.right !== undefined;
 
   async function handleSend(side: Side, text: string) {
-    await grammarCheck(side, text);
+    if (settings.grammarCheck[side]) {
+      await grammarCheck(side, text);
+    } else {
+      await postForTranslation(side, crypto.randomUUID(), text);
+    }
+  }
+
+  function handleToggleGrammarCheck(side: Side, enabled: boolean) {
+    onSettingsChange({
+      ...settings,
+      grammarCheck: { ...settings.grammarCheck, [side]: enabled },
+    });
   }
 
   async function grammarCheck(side: Side, text: string) {
@@ -221,7 +234,9 @@ export default function ChatScreen({
           messages={messages.filter((message) => message.side === "left")}
           pending={pending.left}
           inputBlocked={inputBlocked}
+          grammarCheck={settings.grammarCheck.left}
           onSend={(text) => handleSend("left", text)}
+          onToggleGrammarCheck={(enabled) => handleToggleGrammarCheck("left", enabled)}
           onPick={(option) => handlePick("left", option)}
           onPickCorrection={(option) => handlePickCorrection("left", option)}
           onSendOriginal={() => handleSendOriginal("left")}
@@ -234,7 +249,9 @@ export default function ChatScreen({
           messages={messages.filter((message) => message.side === "right")}
           pending={pending.right}
           inputBlocked={inputBlocked}
+          grammarCheck={settings.grammarCheck.right}
           onSend={(text) => handleSend("right", text)}
+          onToggleGrammarCheck={(enabled) => handleToggleGrammarCheck("right", enabled)}
           onPick={(option) => handlePick("right", option)}
           onPickCorrection={(option) => handlePickCorrection("right", option)}
           onSendOriginal={() => handleSendOriginal("right")}

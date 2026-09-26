@@ -8,10 +8,16 @@ export interface Language {
   native: string;
 }
 
+export interface GrammarCheckSetting {
+  left: boolean;
+  right: boolean;
+}
+
 export interface Settings {
   source: string;
   target: string;
   formality: Formality;
+  grammarCheck: GrammarCheckSetting;
 }
 
 export interface Message {

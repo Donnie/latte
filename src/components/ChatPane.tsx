@@ -8,7 +8,9 @@ interface ChatPaneProps {
   messages: Message[];
   pending?: Pending;
   inputBlocked: boolean;
+  grammarCheck: boolean;
   onSend(text: string): void;
+  onToggleGrammarCheck(enabled: boolean): void;
   onPick(option: string): void;
   onPickCorrection(option: string): void;
   onSendOriginal(): void;
@@ -22,7 +24,9 @@ export default function ChatPane({
   messages,
   pending,
   inputBlocked,
+  grammarCheck,
   onSend,
+  onToggleGrammarCheck,
   onPick,
   onPickCorrection,
   onSendOriginal,
@@ -55,6 +59,14 @@ export default function ChatPane({
     <section className={styles.pane} aria-label={`${language} conversation`}>
       <header className={styles.header}>
         <h2>{language}</h2>
+        <label className={grammarCheck ? `${styles.grammarToggle} ${styles.grammarToggleOn}` : styles.grammarToggle}>
+          <input
+            type="checkbox"
+            checked={grammarCheck}
+            onChange={(event) => onToggleGrammarCheck(event.target.checked)}
+          />
+          Grammar check
+        </label>
       </header>
 
       <div className={styles.messages} ref={listRef}>

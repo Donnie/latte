@@ -5,7 +5,7 @@ import SetupScreen from "./components/SetupScreen";
 import { EMPTY_CHATS, STORAGE_KEYS } from "./constants";
 import { usePersistentState } from "./hooks/usePersistentState";
 import { clearAppStorage } from "./lib/storage";
-import type { ChatStore, Message, Screen, Settings } from "./types";
+import type { ChatStore, GrammarCheckSetting, Message, Screen, Settings } from "./types";
 
 export default function App() {
   const [apiKey, setApiKey] = usePersistentState(STORAGE_KEYS.apiKey, "");
@@ -34,6 +34,7 @@ export default function App() {
           apiKey={apiKey}
           chats={chats}
           onAppendMessage={appendMessage}
+          onSettingsChange={setStoredSettings}
           onOpenSettings={() => setScreen("setup")}
           onLogout={logout}
         />
@@ -70,5 +71,15 @@ function normalizeSettings(value: unknown): Settings | null {
     source: candidate.source,
     target: candidate.target,
     formality: candidate.formality === "formal" ? "formal" : "informal",
+    grammarCheck: normalizeGrammarCheck(candidate.grammarCheck),
+  };
+}
+
+function normalizeGrammarCheck(value: unknown): GrammarCheckSetting {
+  if (typeof value !== "object" || value === null) return { left: true, right: true };
+  const candidate = value as Record<string, unknown>;
+  return {
+    left: candidate.left !== false,
+    right: candidate.right !== false,
   };
 }

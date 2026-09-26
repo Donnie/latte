@@ -90,7 +90,7 @@ export default function SetupScreen({ initial, canCancel, onSave, onCancel }: Se
             type="button"
             className={styles.primary}
             disabled={isInvalid}
-            onClick={() => onSave({ source, target, formality })}
+            onClick={() => onSave({ source, target, formality, grammarCheck: initial?.grammarCheck ?? { left: true, right: true } })}
           >
             {canCancel ? "Save" : "Start translating"}
           </button>
