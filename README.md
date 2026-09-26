@@ -23,10 +23,10 @@ A two-pane chat translator for language pairs, powered by OpenRouter. Type in ei
 ## Use it now
 
 1. Open https://latte.donnie.in
-2. Get an OpenRouter API key: sign in at openrouter.ai, open Keys at openrouter.ai/keys, create a key, and copy it
-3. Paste the key into Latte, choose your languages and tonality, and start chatting
+2. Click "Sign in with OpenRouter", log in, and authorize — Latte creates and stores the key for you automatically
+3. Choose your languages and tonality, and start chatting
 
-Your key, chats, and spend total are stored only in this browser. Log out to erase everything.
+You can also paste an existing OpenRouter key instead. Your key, chats, and spend total are stored only in this browser. Log out to erase everything.
 
 ## Development
 
