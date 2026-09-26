@@ -15,7 +15,7 @@ const SEED_SETTINGS = {
   formality: "informal",
   grammarCheck: { left: true, right: true },
   translationModel: "z-ai/glm-5.3-flash",
-  grammarModel: "typesafe/jev-router",
+    grammarModel: "~typesafe/jev-latest",
 };
 
 const SEED_MESSAGES = [
@@ -43,6 +43,16 @@ async function seed(context, { withSettings = true, withChats = false, withCosts
 }
 
 async function mockOpenRouter(context) {
+  await context.route("**/api/alpha/decisions", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        answers: { has_errors: { type: "noul", noul: 0.96 } },
+        usage: { cost: 0.00001 },
+      }),
+    });
+  });
   await context.route("**/api/v1/chat/completions", async (route) => {
     const body = route.request().postDataJSON();
     const system = body?.messages?.[0]?.content ?? "";
