@@ -16,6 +16,7 @@ A two-pane chat translator for language pairs, powered by OpenRouter. Type in ei
 - **Formal or informal**: choose the tonality your translations should carry
 - **Your models**: translation can use any OpenRouter text model, while the grammar check is limited to typed decision models that answer with probabilities instead of text (defaults: `z-ai/glm-5.3-flash` for translation, `~typesafe/jev-latest` for checks)
 - **Cost transparency**: a running total of API spend sits in the header
+- **Light or dark**: theme toggle on the login screen and beside the cost header; follows your system preference until you choose, then persists in this browser
 - **Tidy controls**: delete any bubble, clear one pane, or log out to wipe everything
 - **Local first**: the API key, settings, chats, and costs live in localStorage only; logging out clears them all
 - **Errors handled**: failed requests offer a retry without losing your draft

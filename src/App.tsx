@@ -6,16 +6,22 @@ import { EMPTY_CHATS, DEFAULT_GRAMMAR_MODEL, DEFAULT_TRANSLATION_MODEL, LEGACY_G
 import { usePersistentState } from "./hooks/usePersistentState";
 import { exchangeAuthCode, readAuthCodeFromUrl, readAuthErrorFromUrl } from "./lib/auth";
 import { clearAppStorage } from "./lib/storage";
-import type { ChatStore, GrammarCheckSetting, Message, Screen, Settings, Side } from "./types";
+import { applyTheme, initialTheme, storeTheme } from "./lib/theme";
+import type { ChatStore, GrammarCheckSetting, Message, Screen, Settings, Side, Theme } from "./types";
 
 export default function App() {
   const [apiKey, setApiKey] = usePersistentState(STORAGE_KEYS.apiKey, "");
   const [storedSettings, setStoredSettings] = usePersistentState<Settings | null>(STORAGE_KEYS.settings, null);
   const [chats, setChats] = usePersistentState<ChatStore>(STORAGE_KEYS.chats, EMPTY_CHATS);
   const [storedCost, setTotalCost] = usePersistentState(STORAGE_KEYS.cost, 0);
+  const [theme, setTheme] = usePersistentState<Theme>(STORAGE_KEYS.theme, initialTheme());
   const [screen, setScreen] = useState<Screen | null>(null);
   const [oauthPending, setOauthPending] = useState(false);
   const [oauthError, setOauthError] = useState<string | null>(null);
+
+  useEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
 
   useEffect(() => {
     const urlError = readAuthErrorFromUrl();
@@ -38,7 +44,7 @@ export default function App() {
   return (
     <>
       {activeScreen === "login" && (
-        <LoginScreen onLogin={setApiKey} oauthPending={oauthPending} oauthError={oauthError} />
+        <LoginScreen onLogin={setApiKey} theme={theme} onToggleTheme={toggleTheme} oauthPending={oauthPending} oauthError={oauthError} />
       )}
       {activeScreen === "setup" && (
         <SetupScreen
@@ -55,6 +61,8 @@ export default function App() {
           apiKey={apiKey}
           chats={chats}
           totalCost={totalCost}
+          theme={theme}
+          onToggleTheme={toggleTheme}
           onAppendMessage={appendMessage}
           onRemoveMessage={removeMessage}
           onClearSide={clearChatSide}
@@ -66,6 +74,12 @@ export default function App() {
       )}
     </>
   );
+
+  function toggleTheme() {
+    const next: Theme = theme === "dark" ? "light" : "dark";
+    storeTheme(next);
+    setTheme(next);
+  }
 
   function saveSettings(next: Settings) {
     setStoredSettings(next);
@@ -107,7 +121,7 @@ export default function App() {
     setChats(EMPTY_CHATS);
     setTotalCost(0);
     setScreen(null);
-    clearAppStorage(Object.values(STORAGE_KEYS));
+    clearAppStorage(Object.values(STORAGE_KEYS).filter((key) => key !== STORAGE_KEYS.theme));
   }
 }
 

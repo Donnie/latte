@@ -23,6 +23,7 @@ export const STORAGE_KEYS = {
   settings: "latte.settings",
   chats: "latte.chats",
   cost: "latte.costs",
+  theme: "latte.theme",
 } as const;
 
 export const EMPTY_CHATS: ChatStore = {};

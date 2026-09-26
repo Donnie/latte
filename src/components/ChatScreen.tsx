@@ -1,8 +1,9 @@
 import { useRef, useState } from "react";
 import { languageName } from "../constants";
 import { fetchCorrectionOptions, fetchHasGrammarErrors, fetchTranslationOptions } from "../lib/openrouter";
-import type { ChatLog, ChatStore, Message, Pending, Settings, Side } from "../types";
+import type { ChatLog, ChatStore, Message, Pending, Settings, Side, Theme } from "../types";
 import ChatPane from "./ChatPane";
+import ThemeToggle from "./ThemeToggle";
 import styles from "./ChatScreen.module.css";
 
 interface ChatScreenProps {
@@ -10,6 +11,8 @@ interface ChatScreenProps {
   apiKey: string;
   chats: ChatStore;
   totalCost: number;
+  theme: Theme;
+  onToggleTheme(): void;
   onAppendMessage(chatKey: string, message: Message): void;
   onRemoveMessage(chatKey: string, messageId: string): void;
   onClearSide(chatKey: string, side: Side): void;
@@ -39,6 +42,8 @@ export default function ChatScreen({
   apiKey,
   chats,
   totalCost,
+  theme,
+  onToggleTheme,
   onAppendMessage,
   onRemoveMessage,
   onClearSide,
@@ -260,6 +265,7 @@ export default function ChatScreen({
           <span className={styles.chip}>{settings.formality}</span>
         </div>
         <div className={styles.actions}>
+          <ThemeToggle theme={theme} onToggle={onToggleTheme} />
           <span className={styles.costChip} title="Total OpenRouter spend on this device">
             Σ {formatCost(totalCost)}
           </span>

@@ -1,14 +1,18 @@
 import { useState, type FormEvent } from "react";
 import { startOpenRouterSignIn } from "../lib/auth";
+import type { Theme } from "../types";
+import ThemeToggle from "./ThemeToggle";
 import styles from "./LoginScreen.module.css";
 
 interface LoginScreenProps {
   onLogin(apiKey: string): void;
+  theme: Theme;
+  onToggleTheme(): void;
   oauthPending?: boolean;
   oauthError?: string | null;
 }
 
-export default function LoginScreen({ onLogin, oauthPending = false, oauthError = null }: LoginScreenProps) {
+export default function LoginScreen({ onLogin, theme, onToggleTheme, oauthPending = false, oauthError = null }: LoginScreenProps) {
   const [apiKey, setApiKey] = useState("");
   const [reveal, setReveal] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
@@ -31,6 +35,9 @@ export default function LoginScreen({ onLogin, oauthPending = false, oauthError 
 
   return (
     <main className={styles.screen}>
+      <div className={styles.themeSpot}>
+        <ThemeToggle theme={theme} onToggle={onToggleTheme} />
+      </div>
       <section className={styles.card}>
         <div className={styles.logo} aria-hidden="true">☕</div>
         <h1>Latte</h1>
@@ -69,10 +76,7 @@ export default function LoginScreen({ onLogin, oauthPending = false, oauthError 
           </button>
         </form>
         <p className={styles.note}>
-          The key is saved only in this browser’s local storage and is sent only to OpenRouter.{" "}
-          <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer">
-            Get a free key →
-          </a>
+          The key is saved only in this browser’s local storage and is sent only to OpenRouter.
         </p>
       </section>
     </main>
