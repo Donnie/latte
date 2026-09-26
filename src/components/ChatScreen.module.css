@@ -47,7 +47,20 @@
 
 .actions {
   display: flex;
+  align-items: center;
   gap: 8px;
+}
+
+.costChip {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  border-radius: 999px;
+  padding: 4px 11px;
+  font-size: 12.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: help;
 }
 
 .iconButton {

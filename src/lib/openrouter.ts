@@ -28,10 +28,26 @@ interface ChatMessage {
 interface OpenRouterResponse {
   error?: { message?: string };
   choices?: Array<{ message?: { content?: unknown } }>;
+  usage?: { cost?: unknown };
 }
 
-export async function fetchHasGrammarErrors(request: ProofreadRequest): Promise<boolean> {
-  const content = await requestCompletion(
+interface CompletionResult {
+  content: string;
+  cost: number;
+}
+
+export interface HasErrorsResult {
+  hasErrors: boolean;
+  cost: number;
+}
+
+export interface OptionsResult {
+  options: string[];
+  cost: number;
+}
+
+export async function fetchHasGrammarErrors(request: ProofreadRequest): Promise<HasErrorsResult> {
+  const result = await requestCompletion(
     request,
     GRAMMAR_MODEL,
     [
@@ -39,11 +55,11 @@ export async function fetchHasGrammarErrors(request: ProofreadRequest): Promise<
       { role: "user", content: `Language: ${request.language}\nText: ${request.text}` },
     ],
   );
-  return parseHasErrors(content);
+  return { hasErrors: parseHasErrors(result.content), cost: result.cost };
 }
 
-export async function fetchCorrectionOptions(request: ProofreadRequest): Promise<string[]> {
-  const content = await requestCompletion(
+export async function fetchCorrectionOptions(request: ProofreadRequest): Promise<OptionsResult> {
+  const result = await requestCompletion(
     request,
     MODEL,
     [
@@ -52,11 +68,11 @@ export async function fetchCorrectionOptions(request: ProofreadRequest): Promise
     ],
     0.3,
   );
-  return parseOptions(content);
+  return { options: parseOptions(result.content), cost: result.cost };
 }
 
-export async function fetchTranslationOptions(request: TranslationRequest): Promise<string[]> {
-  const content = await requestCompletion(
+export async function fetchTranslationOptions(request: TranslationRequest): Promise<OptionsResult> {
+  const result = await requestCompletion(
     request,
     MODEL,
     [
@@ -65,7 +81,7 @@ export async function fetchTranslationOptions(request: TranslationRequest): Prom
     ],
     0.8,
   );
-  return parseOptions(content);
+  return { options: parseOptions(result.content), cost: result.cost };
 }
 
 const GRAMMAR_CHECK_PROMPT = [
@@ -110,7 +126,7 @@ async function requestCompletion(
   model: string,
   messages: ChatMessage[],
   temperature?: number,
-): Promise<string> {
+): Promise<CompletionResult> {
   const body: Record<string, unknown> = { model, messages };
   if (temperature !== undefined) body.temperature = temperature;
 
@@ -134,7 +150,8 @@ async function requestCompletion(
   if (typeof content !== "string") {
     throw new OpenRouterError("Unexpected response from OpenRouter.");
   }
-  return content;
+  const cost = typeof payload.usage?.cost === "number" ? payload.usage.cost : 0;
+  return { content, cost };
 }
 
 function buildHeaders(apiKey: string): HeadersInit {

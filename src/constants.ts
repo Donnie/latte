@@ -9,6 +9,7 @@ export const STORAGE_KEYS = {
   apiKey: "latte.apiKey",
   settings: "latte.settings",
   chats: "latte.chats",
+  cost: "latte.costs",
 } as const;
 
 export const EMPTY_CHATS: ChatStore = {};

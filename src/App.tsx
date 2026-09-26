@@ -11,9 +11,11 @@ export default function App() {
   const [apiKey, setApiKey] = usePersistentState(STORAGE_KEYS.apiKey, "");
   const [storedSettings, setStoredSettings] = usePersistentState<Settings | null>(STORAGE_KEYS.settings, null);
   const [chats, setChats] = usePersistentState<ChatStore>(STORAGE_KEYS.chats, EMPTY_CHATS);
+  const [storedCost, setTotalCost] = usePersistentState(STORAGE_KEYS.cost, 0);
   const [screen, setScreen] = useState<Screen | null>(null);
 
   const settings = normalizeSettings(storedSettings);
+  const totalCost = Number.isFinite(storedCost) ? storedCost : 0;
   const activeScreen: Screen = screen ?? (apiKey ? (settings ? "chat" : "setup") : "login");
 
   return (
@@ -33,7 +35,9 @@ export default function App() {
           settings={settings}
           apiKey={apiKey}
           chats={chats}
+          totalCost={totalCost}
           onAppendMessage={appendMessage}
+          onAddCost={addCost}
           onSettingsChange={setStoredSettings}
           onOpenSettings={() => setScreen("setup")}
           onLogout={logout}
@@ -54,10 +58,15 @@ export default function App() {
     }));
   }
 
+  function addCost(cost: number) {
+    setTotalCost((prev) => (Number.isFinite(prev) ? prev : 0) + cost);
+  }
+
   function logout() {
     setApiKey("");
     setStoredSettings(null);
     setChats(EMPTY_CHATS);
+    setTotalCost(0);
     setScreen(null);
     clearAppStorage(Object.values(STORAGE_KEYS));
   }

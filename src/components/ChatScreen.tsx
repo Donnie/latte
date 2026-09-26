@@ -9,7 +9,9 @@ interface ChatScreenProps {
   settings: Settings;
   apiKey: string;
   chats: ChatStore;
+  totalCost: number;
   onAppendMessage(chatKey: string, message: Message): void;
+  onAddCost(cost: number): void;
   onSettingsChange(settings: Settings): void;
   onOpenSettings(): void;
   onLogout(): void;
@@ -23,11 +25,20 @@ function otherSide(side: Side): Side {
   return side === "left" ? "right" : "left";
 }
 
+function formatCost(cost: number): string {
+  if (cost <= 0) return "$0.00";
+  if (cost < 0.0001) return "<$0.0001";
+  if (cost < 1) return `$${cost.toFixed(4)}`;
+  return `$${cost.toFixed(2)}`;
+}
+
 export default function ChatScreen({
   settings,
   apiKey,
   chats,
+  totalCost,
   onAppendMessage,
+  onAddCost,
   onSettingsChange,
   onOpenSettings,
   onLogout,
@@ -66,18 +77,28 @@ export default function ChatScreen({
     setPendingFor(side, { requestId, kind: "grammar", status: "checking", sourceText: text, options: [], error: "" });
 
     try {
-      const hasErrors = await fetchHasGrammarErrors({ apiKey, text, language, signal: controller.signal });
+      const check = await fetchHasGrammarErrors({ apiKey, text, language, signal: controller.signal });
+      onAddCost(check.cost);
       if (stopped(controller, side, requestId)) return;
+      const hasErrors = check.hasErrors;
 
       if (!hasErrors) {
         await postForTranslation(side, requestId, text);
         return;
       }
 
-      const options = await fetchCorrectionOptions({ apiKey, text, language, signal: controller.signal });
+      const corrections = await fetchCorrectionOptions({ apiKey, text, language, signal: controller.signal });
+      onAddCost(corrections.cost);
       if (stopped(controller, side, requestId)) return;
 
-      setPendingFor(side, { requestId, kind: "grammar", status: "corrections", sourceText: text, options, error: "" });
+      setPendingFor(side, {
+        requestId,
+        kind: "grammar",
+        status: "corrections",
+        sourceText: text,
+        options: corrections.options,
+        error: "",
+      });
     } catch (error) {
       if (stopped(controller, side, requestId)) return;
       setPendingFor(side, {
@@ -111,7 +132,7 @@ export default function ChatScreen({
     });
 
     try {
-      const options = await fetchTranslationOptions({
+      const result = await fetchTranslationOptions({
         apiKey,
         text,
         sourceLanguage,
@@ -119,8 +140,16 @@ export default function ChatScreen({
         formality: settings.formality,
         signal: controller.signal,
       });
+      onAddCost(result.cost);
       if (stopped(controller, targetSide, requestId)) return;
-      setPendingFor(targetSide, { requestId, kind: "translation", status: "ready", sourceText: text, options, error: "" });
+      setPendingFor(targetSide, {
+        requestId,
+        kind: "translation",
+        status: "ready",
+        sourceText: text,
+        options: result.options,
+        error: "",
+      });
     } catch (error) {
       if (stopped(controller, targetSide, requestId)) return;
       setPendingFor(targetSide, {
@@ -209,6 +238,9 @@ export default function ChatScreen({
           <span className={styles.chip}>{settings.formality}</span>
         </div>
         <div className={styles.actions}>
+          <span className={styles.costChip} title="Total OpenRouter spend on this device">
+            Σ {formatCost(totalCost)}
+          </span>
           <button
             type="button"
             className={styles.iconButton}
