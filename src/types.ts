@@ -2,6 +2,8 @@ export type Formality = "formal" | "informal";
 
 export type Side = "left" | "right";
 
+export type Theme = "light" | "dark";
+
 export interface Language {
   code: string;
   name: string;
