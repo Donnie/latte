@@ -19,16 +19,6 @@
   white-space: nowrap;
 }
 
-.gitLink {
-  display: inline-flex;
-  align-items: center;
-  color: var(--muted);
-}
-
-.gitLink:hover {
-  color: var(--accent-strong);
-}
-
 .pairInfo {
   display: flex;
   align-items: center;
