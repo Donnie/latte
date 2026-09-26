@@ -116,6 +116,9 @@ const GRAMMAR_CHECK_PROMPT = [
   'Example 3: "haha nice one 😄" → {"hasErrors": false}',
 ].join(" ");
 
+const NO_EM_DASH_RULE =
+  "Never use the em dash (—) anywhere in the output; rephrase with commas, colons, parentheses or full stops instead.";
+
 function buildCorrectionPrompt(language: string): string {
   return [
     "You are a proofreading assistant.",
@@ -123,6 +126,7 @@ function buildCorrectionPrompt(language: string): string {
     "Preserve meaning, tone and wording; do not add or remove information.",
     `Give up to ${OPTIONS_PER_REQUEST} corrected versions, all equally valid, varying only in minor punctuation or phrasing choices.`,
     "Keep names, numbers, URLs and code unchanged.",
+    NO_EM_DASH_RULE,
     "Reply with strict JSON only, no markdown, exactly in this shape:",
     '{"options": ["<correction 1>", "<correction 2>", "<correction 3>"]}',
   ].join(" ");
@@ -140,6 +144,7 @@ function buildTranslationPrompt(request: TranslationRequest): string {
     `Use a ${register} register.`,
     `Give exactly ${OPTIONS_PER_REQUEST} alternative translations: same meaning, natural and idiomatic, with varied wording and structure.`,
     "Keep names, numbers, URLs and code unchanged.",
+    NO_EM_DASH_RULE,
     "Reply with strict JSON only, no markdown, exactly in this shape:",
     '{"options": ["<option 1>", "<option 2>", "<option 3>"]}',
   ].join(" ");
@@ -227,13 +232,21 @@ function parseOptions(raw: string): string[] {
         const options = parsed.options
           .map((option) => (typeof option === "string" ? option.trim() : ""))
           .filter((option) => option.length > 0);
-        if (options.length > 0) return options.slice(0, OPTIONS_PER_REQUEST);
+        if (options.length > 0) return options.slice(0, OPTIONS_PER_REQUEST).map(stripEmDashes);
       }
     } catch {
       return parsePlainLines(raw);
     }
   }
   return parsePlainLines(raw);
+}
+
+function stripEmDashes(text: string): string {
+  return text
+    .replace(/\s*—\s*/g, ", ")
+    .replace(/,\s*([.,!?;:…])/g, "$1")
+    .replace(/,\s*$/, "")
+    .trim();
 }
 
 function parsePlainLines(raw: string): string[] {
