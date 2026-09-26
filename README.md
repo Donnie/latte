@@ -1,0 +1,40 @@
+# ☕ Latte
+
+A two-pane chat translator for language pairs, powered by OpenRouter. Type in either pane, pick from three natural translations, and let the optional grammar check catch mistakes before anything is sent. Fully frontend: no backend, no accounts, nothing stored outside your browser.
+
+| | |
+| --- | --- |
+| ![Login](docs/screenshots/login.png) | ![Setup](docs/screenshots/setup.png) |
+| ![Two-pane chat](docs/screenshots/chat-web.png) | ![Chat on mobile](docs/screenshots/chat-mobile.png) |
+
+## Features
+
+- **Any language pair**: pick a source and target language, swap them anytime, and keep a separate conversation per pair
+- **Type in either pane**: write in your language or theirs; on phones the panes stack vertically
+- **Three options every time**: each message arrives as three translation alternatives; pick the best fit or tap "None of these" for three fresh attempts
+- **Optional grammar check**: a per-pane toggle that reviews your draft with a checker model; if it finds mistakes you get up to three corrected versions, and you can send as is, dismiss, or edit
+- **Formal or informal**: choose the tonality your translations should carry
+- **Your models**: translation and grammar models are configurable, with suggestions pulled from the live OpenRouter catalogue (defaults: `z-ai/glm-5.3-flash` for translation, `typesafe/jev-router` for checks)
+- **Cost transparency**: a running total of API spend sits in the header
+- **Tidy controls**: delete any bubble, clear one pane, or log out to wipe everything
+- **Local first**: the API key, settings, chats, and costs live in localStorage only; logging out clears them all
+- **Errors handled**: failed requests offer a retry without losing your draft
+
+## Getting started
+
+```bash
+npm install
+npm run dev
+```
+
+Open the printed URL, paste an OpenRouter API key, choose your languages, and start chatting.
+
+The four screenshots above are generated with Playwright: run `npm run screenshots` against a preview server on port 4173.
+
+## Deploy
+
+GitHub Pages ready: push to `main` and the included workflow builds and publishes the site. Enable it under Settings, Pages, Build and deployment, Source: GitHub Actions. Your API key never leaves the browser, so no repository secrets are needed.
+
+## Stack
+
+Vite 7, React 19, TypeScript, CSS Modules, Playwright for screenshots. No backend, no database, no tracking.
