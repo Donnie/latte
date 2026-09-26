@@ -107,10 +107,13 @@ export async function fetchTranslationOptions(request: TranslationRequest): Prom
 
 const GRAMMAR_CHECK_PROMPT = [
   "You are a strict grammar, spelling and punctuation checker.",
-  "Decide whether the user's text contains at least one real mistake in the given language.",
-  "Only count real mistakes: wrong spelling, grammar or punctuation.",
-  "Ignore intentional slang, names, quotes, URLs, code and stylistic choices.",
-  'Reply with strict JSON only, no markdown: {"hasErrors": true} when there is at least one mistake, {"hasErrors": false} when the text is clean.',
+  "Decide whether the user's text contains at least one real mistake in the given language: wrong spelling, grammar or punctuation.",
+  "Casual style, slang, emoji, names, quotes, URLs, code and a missing final period are NOT mistakes.",
+  "If the text is clean or you are unsure, answer false.",
+  'Reply with strict JSON only, no markdown, no explanation: {"hasErrors": true} or {"hasErrors": false}.',
+  'Example 1: "Ja super idee, last uns gerne Odyssey shauen" → {"hasErrors": true}',
+  'Example 2: "Ja, super Idee, lass uns gerne Odyssey schauen." → {"hasErrors": false}',
+  'Example 3: "haha nice one 😄" → {"hasErrors": false}',
 ].join(" ");
 
 function buildCorrectionPrompt(language: string): string {
@@ -197,16 +200,22 @@ async function describeHttpError(response: Response): Promise<string> {
 }
 
 function parseHasErrors(content: string): boolean {
+  const explicit = content.match(/"hasErrors"\s*:\s*("?(true|false)"?)/i);
+  if (explicit) {
+    const value = explicit[1].replace(/"/g, "").toLowerCase();
+    if (value === "true") return true;
+    if (value === "false") return false;
+  }
   const jsonText = extractJson(content);
   if (jsonText) {
     try {
       const parsed = JSON.parse(jsonText) as { hasErrors?: unknown };
       if (typeof parsed.hasErrors === "boolean") return parsed.hasErrors;
     } catch {
-      return /\btrue\b/i.test(content);
+      return false;
     }
   }
-  return /\btrue\b/i.test(content);
+  return false;
 }
 
 function parseOptions(raw: string): string[] {
