@@ -38,12 +38,26 @@ export default function ChatPane({
   onClear,
 }: ChatPaneProps) {
   const [draft, setDraft] = useState("");
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
+  const copyTimer = useRef<number | null>(null);
   const isBusy = pending?.status === "checking" || pending?.status === "loading";
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
   }, [messages.length, pending]);
+
+  useEffect(() => () => {
+    if (copyTimer.current !== null) window.clearTimeout(copyTimer.current);
+  }, []);
+
+  function handleCopy(message: Message) {
+    navigator.clipboard?.writeText(message.text).then(() => {
+      setCopiedId(message.id);
+      if (copyTimer.current !== null) window.clearTimeout(copyTimer.current);
+      copyTimer.current = window.setTimeout(() => setCopiedId(null), 1200);
+    }).catch(() => {});
+  }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -107,9 +121,19 @@ export default function ChatPane({
             </div>
             <button
               type="button"
+              className={styles.copy}
+              onClick={() => handleCopy(message)}
+              aria-label="Copy message"
+              title="Copy"
+            >
+              {copiedId === message.id ? "✓" : "⧉"}
+            </button>
+            <button
+              type="button"
               className={styles.delete}
               onClick={() => onDeleteMessage(message.id)}
               aria-label="Delete message"
+              title="Delete"
             >
               ✕
             </button>
