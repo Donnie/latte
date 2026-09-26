@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import ChatScreen, { chatKeyOf } from "./components/ChatScreen";
 import LoginScreen from "./components/LoginScreen";
 import SetupScreen from "./components/SetupScreen";
 import { EMPTY_CHATS, DEFAULT_GRAMMAR_MODEL, DEFAULT_TRANSLATION_MODEL, LEGACY_GRAMMAR_MODEL, STORAGE_KEYS } from "./constants";
 import { usePersistentState } from "./hooks/usePersistentState";
+import { exchangeAuthCode, readAuthCodeFromUrl, readAuthErrorFromUrl } from "./lib/auth";
 import { clearAppStorage } from "./lib/storage";
 import type { ChatStore, GrammarCheckSetting, Message, Screen, Settings, Side } from "./types";
 
@@ -13,6 +14,22 @@ export default function App() {
   const [chats, setChats] = usePersistentState<ChatStore>(STORAGE_KEYS.chats, EMPTY_CHATS);
   const [storedCost, setTotalCost] = usePersistentState(STORAGE_KEYS.cost, 0);
   const [screen, setScreen] = useState<Screen | null>(null);
+  const [oauthPending, setOauthPending] = useState(false);
+  const [oauthError, setOauthError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const urlError = readAuthErrorFromUrl();
+    if (urlError) setOauthError(urlError);
+    const code = readAuthCodeFromUrl();
+    if (!code) return;
+    setOauthPending(true);
+    exchangeAuthCode(code)
+      .then((key) => setApiKey(key))
+      .catch((error: unknown) => {
+        setOauthError(error instanceof Error ? error.message : "Sign-in failed — please try again.");
+      })
+      .finally(() => setOauthPending(false));
+  }, [setApiKey]);
 
   const settings = normalizeSettings(storedSettings);
   const totalCost = Number.isFinite(storedCost) ? storedCost : 0;
@@ -20,7 +37,9 @@ export default function App() {
 
   return (
     <>
-      {activeScreen === "login" && <LoginScreen onLogin={setApiKey} />}
+      {activeScreen === "login" && (
+        <LoginScreen onLogin={setApiKey} oauthPending={oauthPending} oauthError={oauthError} />
+      )}
       {activeScreen === "setup" && (
         <SetupScreen
           initial={settings}

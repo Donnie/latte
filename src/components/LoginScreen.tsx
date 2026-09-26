@@ -1,18 +1,32 @@
 import { useState, type FormEvent } from "react";
+import { startOpenRouterSignIn } from "../lib/auth";
 import styles from "./LoginScreen.module.css";
 
 interface LoginScreenProps {
   onLogin(apiKey: string): void;
+  oauthPending?: boolean;
+  oauthError?: string | null;
 }
 
-export default function LoginScreen({ onLogin }: LoginScreenProps) {
+export default function LoginScreen({ onLogin, oauthPending = false, oauthError = null }: LoginScreenProps) {
   const [apiKey, setApiKey] = useState("");
   const [reveal, setReveal] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
   const trimmed = apiKey.trim();
+  const error = oauthError ?? startError;
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (trimmed) onLogin(trimmed);
+  }
+
+  async function handleSignIn() {
+    setStartError(null);
+    try {
+      await startOpenRouterSignIn();
+    } catch (caught) {
+      setStartError(caught instanceof Error ? caught.message : "Sign-in failed — please try again.");
+    }
   }
 
   return (
@@ -23,6 +37,12 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
         <p className={styles.tagline}>
           A two-pane chat translator, powered by OpenRouter. Choose your language pair and models after logging in.
         </p>
+        {error && <p className={styles.error} role="alert">{error}</p>}
+        {oauthPending && <p className={styles.pending}>Finishing sign-in with OpenRouter…</p>}
+        <button type="button" className={styles.primary} onClick={handleSignIn} disabled={oauthPending}>
+          Sign in with OpenRouter
+        </button>
+        <div className={styles.divider}>or paste an existing key</div>
         <form onSubmit={handleSubmit}>
           <label className={styles.label} htmlFor="openrouter-key">
             OpenRouter API key
@@ -38,13 +58,13 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
               autoCapitalize="off"
               autoCorrect="off"
               spellCheck={false}
-              autoFocus
+              disabled={oauthPending}
             />
-            <button type="button" onClick={() => setReveal((value) => !value)}>
+            <button type="button" onClick={() => setReveal((value) => !value)} disabled={oauthPending}>
               {reveal ? "Hide" : "Show"}
             </button>
           </div>
-          <button type="submit" className={styles.primary} disabled={trimmed === ""}>
+          <button type="submit" className={styles.secondary} disabled={trimmed === "" || oauthPending}>
             Log in
           </button>
         </form>

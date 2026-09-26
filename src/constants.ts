@@ -13,6 +13,9 @@ export const DEFAULT_DECISION_MODEL_SUGGESTIONS = [
 export const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 export const DECISIONS_URL = "https://openrouter.ai/api/alpha/decisions";
 export const MODELS_URL = "https://openrouter.ai/api/v1/models";
+export const AUTH_URL = "https://openrouter.ai/auth";
+export const AUTH_KEYS_URL = "https://openrouter.ai/api/v1/auth/keys";
+export const APP_KEY_LABEL = "Latte";
 export const OPTIONS_PER_REQUEST = 3;
 
 export const STORAGE_KEYS = {
