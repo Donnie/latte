@@ -16,6 +16,8 @@ interface ChatPaneProps {
   onSendOriginal(): void;
   onDismiss(): void;
   onRetry(): void;
+  onDeleteMessage(messageId: string): void;
+  onClear(): void;
 }
 
 export default function ChatPane({
@@ -32,6 +34,8 @@ export default function ChatPane({
   onSendOriginal,
   onDismiss,
   onRetry,
+  onDeleteMessage,
+  onClear,
 }: ChatPaneProps) {
   const [draft, setDraft] = useState("");
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -59,14 +63,27 @@ export default function ChatPane({
     <section className={styles.pane} aria-label={`${language} conversation`}>
       <header className={styles.header}>
         <h2>{language}</h2>
-        <label className={grammarCheck ? `${styles.grammarToggle} ${styles.grammarToggleOn}` : styles.grammarToggle}>
-          <input
-            type="checkbox"
-            checked={grammarCheck}
-            onChange={(event) => onToggleGrammarCheck(event.target.checked)}
-          />
-          Grammar check
-        </label>
+        <div className={styles.headerActions}>
+          <label
+            className={grammarCheck ? `${styles.grammarToggle} ${styles.grammarToggleOn}` : styles.grammarToggle}
+          >
+            <input
+              type="checkbox"
+              checked={grammarCheck}
+              onChange={(event) => onToggleGrammarCheck(event.target.checked)}
+            />
+            Grammar check
+          </label>
+          <button
+            type="button"
+            className={styles.clearButton}
+            onClick={onClear}
+            disabled={messages.length === 0 && !pending}
+            aria-label={`Clear the ${language} conversation`}
+          >
+            ⌫ Clear
+          </button>
+        </div>
       </header>
 
       <div className={styles.messages} ref={listRef}>
@@ -78,10 +95,24 @@ export default function ChatPane({
           <div
             key={message.id}
             className={
-              message.side === side ? `${styles.bubble} ${styles.sent}` : `${styles.bubble} ${styles.received}`
+              message.side === side ? `${styles.row} ${styles.rowSent}` : `${styles.row} ${styles.rowReceived}`
             }
           >
-            {message.text}
+            <div
+              className={
+                message.side === side ? `${styles.bubble} ${styles.sent}` : `${styles.bubble} ${styles.received}`
+              }
+            >
+              {message.text}
+            </div>
+            <button
+              type="button"
+              className={styles.delete}
+              onClick={() => onDeleteMessage(message.id)}
+              aria-label="Delete message"
+            >
+              ✕
+            </button>
           </div>
         ))}
 

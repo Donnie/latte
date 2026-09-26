@@ -5,7 +5,7 @@ import SetupScreen from "./components/SetupScreen";
 import { EMPTY_CHATS, DEFAULT_GRAMMAR_MODEL, DEFAULT_TRANSLATION_MODEL, STORAGE_KEYS } from "./constants";
 import { usePersistentState } from "./hooks/usePersistentState";
 import { clearAppStorage } from "./lib/storage";
-import type { ChatStore, GrammarCheckSetting, Message, Screen, Settings } from "./types";
+import type { ChatStore, GrammarCheckSetting, Message, Screen, Settings, Side } from "./types";
 
 export default function App() {
   const [apiKey, setApiKey] = usePersistentState(STORAGE_KEYS.apiKey, "");
@@ -37,6 +37,8 @@ export default function App() {
           chats={chats}
           totalCost={totalCost}
           onAppendMessage={appendMessage}
+          onRemoveMessage={removeMessage}
+          onClearSide={clearChatSide}
           onAddCost={addCost}
           onSettingsChange={setStoredSettings}
           onOpenSettings={() => setScreen("setup")}
@@ -56,6 +58,20 @@ export default function App() {
       ...prev,
       [chatKey]: [...(Array.isArray(prev[chatKey]) ? prev[chatKey] : []), message],
     }));
+  }
+
+  function removeMessage(chatKey: string, messageId: string) {
+    setChats((prev) => {
+      const log = Array.isArray(prev[chatKey]) ? prev[chatKey] : [];
+      return { ...prev, [chatKey]: log.filter((message) => message.id !== messageId) };
+    });
+  }
+
+  function clearChatSide(chatKey: string, side: Side) {
+    setChats((prev) => {
+      const log = Array.isArray(prev[chatKey]) ? prev[chatKey] : [];
+      return { ...prev, [chatKey]: log.filter((message) => message.side !== side) };
+    });
   }
 
   function addCost(cost: number) {

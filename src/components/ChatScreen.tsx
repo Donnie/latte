@@ -11,6 +11,8 @@ interface ChatScreenProps {
   chats: ChatStore;
   totalCost: number;
   onAppendMessage(chatKey: string, message: Message): void;
+  onRemoveMessage(chatKey: string, messageId: string): void;
+  onClearSide(chatKey: string, side: Side): void;
   onAddCost(cost: number): void;
   onSettingsChange(settings: Settings): void;
   onOpenSettings(): void;
@@ -38,6 +40,8 @@ export default function ChatScreen({
   chats,
   totalCost,
   onAppendMessage,
+  onRemoveMessage,
+  onClearSide,
   onAddCost,
   onSettingsChange,
   onOpenSettings,
@@ -209,6 +213,11 @@ export default function ChatScreen({
     void postForTranslation(side, state.requestId, state.sourceText);
   }
 
+  function handleClear(side: Side) {
+    clearPending(side);
+    onClearSide(chatKey, side);
+  }
+
   function appendMessage(side: Side, text: string) {
     onAppendMessage(chatKey, { id: crypto.randomUUID(), side, text, createdAt: Date.now() });
   }
@@ -287,6 +296,8 @@ export default function ChatScreen({
           onSendOriginal={() => handleSendOriginal("left")}
           onDismiss={() => clearPending("left")}
           onRetry={() => handleRetry("left")}
+          onDeleteMessage={(messageId) => onRemoveMessage(chatKey, messageId)}
+          onClear={() => handleClear("left")}
         />
         <ChatPane
           side="right"
@@ -302,6 +313,8 @@ export default function ChatScreen({
           onSendOriginal={() => handleSendOriginal("right")}
           onDismiss={() => clearPending("right")}
           onRetry={() => handleRetry("right")}
+          onDeleteMessage={(messageId) => onRemoveMessage(chatKey, messageId)}
+          onClear={() => handleClear("right")}
         />
       </main>
     </div>
