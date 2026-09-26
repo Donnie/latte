@@ -1,7 +1,9 @@
-import { MODELS_URL, OPENROUTER_URL, OPTIONS_PER_REQUEST } from "../constants";
+import { DECISIONS_URL, MODELS_URL, OPENROUTER_URL, OPTIONS_PER_REQUEST } from "../constants";
 import type { Formality } from "../types";
 
 export class OpenRouterError extends Error {}
+
+export type ModelKind = "text" | "decisions";
 
 interface RequestBase {
   apiKey: string;
@@ -33,6 +35,17 @@ interface OpenRouterResponse {
   usage?: { cost?: unknown };
 }
 
+interface DecisionsResponse {
+  error?: { message?: string };
+  answers?: Record<string, { type?: unknown; noul?: unknown }>;
+  usage?: { cost?: unknown };
+}
+
+interface ModelSummary {
+  id?: unknown;
+  architecture?: { output_modalities?: unknown };
+}
+
 interface CompletionResult {
   content: string;
   cost: number;
@@ -48,16 +61,18 @@ export interface OptionsResult {
   cost: number;
 }
 
-export async function fetchAvailableModels(): Promise<string[]> {
-  const response = await fetch(MODELS_URL);
+export async function fetchAvailableModels(kind: ModelKind = "text"): Promise<string[]> {
+  const url = kind === "decisions" ? `${MODELS_URL}?output_modalities=decisions` : MODELS_URL;
+  const response = await fetch(url);
   if (!response.ok) {
     throw new OpenRouterError(`Could not load models — ${response.statusText || "request failed"}`);
   }
-  const payload = (await response.json()) as { data?: Array<{ id?: unknown }> };
+  const payload = (await response.json()) as { data?: ModelSummary[] };
   if (!Array.isArray(payload.data)) {
     throw new OpenRouterError("Unexpected response from OpenRouter.");
   }
   const ids = payload.data
+    .filter((model) => kind !== "decisions" || outputsDecisions(model))
     .map((model) => (typeof model.id === "string" ? model.id : ""))
     .filter((id) => id.length > 0)
     .sort((a, b) => a.localeCompare(b));
@@ -67,16 +82,47 @@ export async function fetchAvailableModels(): Promise<string[]> {
   return ids;
 }
 
+function outputsDecisions(model: ModelSummary): boolean {
+  const modalities = model.architecture?.output_modalities;
+  return Array.isArray(modalities) && modalities.includes("decisions");
+}
+
 export async function fetchHasGrammarErrors(request: ProofreadRequest): Promise<HasErrorsResult> {
-  const result = await requestCompletion(
-    request,
-    request.model,
-    [
-      { role: "system", content: GRAMMAR_CHECK_PROMPT },
-      { role: "user", content: `Language: ${request.language}\nText: ${request.text}` },
-    ],
-  );
-  return { hasErrors: parseHasErrors(result.content), cost: result.cost };
+  const response = await fetch(DECISIONS_URL, {
+    method: "POST",
+    headers: buildHeaders(request.apiKey),
+    body: JSON.stringify({
+      model: request.model,
+      state: { language: request.language, text: request.text },
+      questions: {
+        has_errors: {
+          type: "noul",
+          instructions:
+            "Check the text carefully for mistakes in the given language. Count as mistakes: misspellings, missing or wrong umlauts (e.g. 'konnen' for 'können'), missing noun capitals, wrong articles, cases or word endings, wrong verb forms, and punctuation errors. Do not count as mistakes: casual style, slang, emoji, names, quotes, URLs, code, informal wording, and a missing final period.",
+          criteria: {
+            true: "The text contains at least one misspelling, wrong umlaut, wrong article, wrong case, wrong verb form or punctuation error.",
+            false: "The text is correctly spelled and grammatical; informal or casual style alone is not an error.",
+          },
+        },
+      },
+    }),
+    signal: request.signal,
+  });
+
+  if (!response.ok) {
+    throw new OpenRouterError(await describeHttpError(response));
+  }
+
+  const payload = (await response.json()) as DecisionsResponse;
+  if (payload.error) {
+    throw new OpenRouterError(payload.error.message ?? "OpenRouter returned an error.");
+  }
+  const answer = payload.answers?.has_errors;
+  if (answer?.type !== "noul" || typeof answer.noul !== "number" || !Number.isFinite(answer.noul)) {
+    throw new OpenRouterError("Unexpected response from OpenRouter.");
+  }
+  const cost = typeof payload.usage?.cost === "number" ? payload.usage.cost : 0;
+  return { hasErrors: answer.noul > 0.5, cost };
 }
 
 export async function fetchCorrectionOptions(request: ProofreadRequest): Promise<OptionsResult> {
@@ -104,17 +150,6 @@ export async function fetchTranslationOptions(request: TranslationRequest): Prom
   );
   return { options: parseOptions(result.content), cost: result.cost };
 }
-
-const GRAMMAR_CHECK_PROMPT = [
-  "You are a strict grammar, spelling and punctuation checker.",
-  "Decide whether the user's text contains at least one real mistake in the given language: wrong spelling, grammar or punctuation.",
-  "Casual style, slang, emoji, names, quotes, URLs, code and a missing final period are NOT mistakes.",
-  "If the text is clean or you are unsure, answer false.",
-  'Reply with strict JSON only, no markdown, no explanation: {"hasErrors": true} or {"hasErrors": false}.',
-  'Example 1: "Ja super idee, last uns gerne Odyssey shauen" → {"hasErrors": true}',
-  'Example 2: "Ja, super Idee, lass uns gerne Odyssey schauen." → {"hasErrors": false}',
-  'Example 3: "haha nice one 😄" → {"hasErrors": false}',
-].join(" ");
 
 const NO_EM_DASH_RULE =
   "Never use the em dash (—) anywhere in the output; rephrase with commas, colons, parentheses or full stops instead.";
@@ -202,25 +237,6 @@ async function describeHttpError(response: Response): Promise<string> {
   }
   if (response.status === 401) return `Invalid API key — ${detail}`;
   return `OpenRouter error ${response.status} — ${detail}`;
-}
-
-function parseHasErrors(content: string): boolean {
-  const explicit = content.match(/"hasErrors"\s*:\s*("?(true|false)"?)/i);
-  if (explicit) {
-    const value = explicit[1].replace(/"/g, "").toLowerCase();
-    if (value === "true") return true;
-    if (value === "false") return false;
-  }
-  const jsonText = extractJson(content);
-  if (jsonText) {
-    try {
-      const parsed = JSON.parse(jsonText) as { hasErrors?: unknown };
-      if (typeof parsed.hasErrors === "boolean") return parsed.hasErrors;
-    } catch {
-      return false;
-    }
-  }
-  return false;
 }
 
 function parseOptions(raw: string): string[] {

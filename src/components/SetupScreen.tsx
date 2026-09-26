@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  DEFAULT_DECISION_MODEL_SUGGESTIONS,
   DEFAULT_GRAMMAR_MODEL,
   DEFAULT_MODEL_SUGGESTIONS,
   DEFAULT_TRANSLATION_MODEL,
@@ -22,16 +23,31 @@ export default function SetupScreen({ initial, canCancel, onSave, onCancel }: Se
   const [formality, setFormality] = useState<Formality>(initial?.formality ?? "informal");
   const [translationModel, setTranslationModel] = useState(initial?.translationModel ?? DEFAULT_TRANSLATION_MODEL);
   const [grammarModel, setGrammarModel] = useState(initial?.grammarModel ?? DEFAULT_GRAMMAR_MODEL);
-  const [models, setModels] = useState<string[]>(DEFAULT_MODEL_SUGGESTIONS);
+  const [textModels, setTextModels] = useState<string[]>(DEFAULT_MODEL_SUGGESTIONS);
+  const [decisionModels, setDecisionModels] = useState<string[]>(DEFAULT_DECISION_MODEL_SUGGESTIONS);
 
   useEffect(() => {
     let cancelled = false;
-    fetchAvailableModels()
+    fetchAvailableModels("text")
       .then((ids) => {
-        if (!cancelled) setModels(ids);
+        if (!cancelled) setTextModels(ids);
       })
       .catch(() => {
-        if (!cancelled) setModels(DEFAULT_MODEL_SUGGESTIONS);
+        if (!cancelled) setTextModels(DEFAULT_MODEL_SUGGESTIONS);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchAvailableModels("decisions")
+      .then((ids) => {
+        if (!cancelled) setDecisionModels(ids);
+      })
+      .catch(() => {
+        if (!cancelled) setDecisionModels(DEFAULT_DECISION_MODEL_SUGGESTIONS);
       });
     return () => {
       cancelled = true;
@@ -109,12 +125,13 @@ export default function SetupScreen({ initial, canCancel, onSave, onCancel }: Se
         </div>
 
         <p className={styles.modelsHint}>
-          Models — any OpenRouter model ID; start typing to pick from the live catalogue.
+          Translation runs on any OpenRouter text model. Grammar check runs on a typed decision model that answers with
+          probabilities instead of text.
         </p>
         <label className={styles.field}>
           <span>Translation model</span>
           <input
-            list="openrouter-models"
+            list="openrouter-text-models"
             value={translationModel}
             onChange={(event) => setTranslationModel(event.target.value)}
             placeholder={DEFAULT_TRANSLATION_MODEL}
@@ -126,7 +143,7 @@ export default function SetupScreen({ initial, canCancel, onSave, onCancel }: Se
         <label className={styles.field}>
           <span>Grammar check model</span>
           <input
-            list="openrouter-models"
+            list="openrouter-decision-models"
             value={grammarModel}
             onChange={(event) => setGrammarModel(event.target.value)}
             placeholder={DEFAULT_GRAMMAR_MODEL}
@@ -135,8 +152,13 @@ export default function SetupScreen({ initial, canCancel, onSave, onCancel }: Se
             autoCorrect="off"
           />
         </label>
-        <datalist id="openrouter-models">
-          {models.map((id) => (
+        <datalist id="openrouter-text-models">
+          {textModels.map((id) => (
+            <option key={id} value={id} />
+          ))}
+        </datalist>
+        <datalist id="openrouter-decision-models">
+          {decisionModels.map((id) => (
             <option key={id} value={id} />
           ))}
         </datalist>
