@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { startOpenRouterSignIn } from "../lib/auth";
 import type { Theme } from "../types";
 import ThemeToggle from "./ThemeToggle";
+import GitHubLink from "./GitHubLink";
 import styles from "./LoginScreen.module.css";
 
 interface LoginScreenProps {
@@ -35,9 +36,6 @@ export default function LoginScreen({ onLogin, theme, onToggleTheme, oauthPendin
 
   return (
     <main className={styles.screen}>
-      <div className={styles.themeSpot}>
-        <ThemeToggle theme={theme} onToggle={onToggleTheme} />
-      </div>
       <section className={styles.card}>
         <div className={styles.logo} aria-hidden="true">☕</div>
         <h1>Latte</h1>
@@ -78,6 +76,10 @@ export default function LoginScreen({ onLogin, theme, onToggleTheme, oauthPendin
         <p className={styles.note}>
           The key is saved only in this browser’s local storage and is sent only to OpenRouter.
         </p>
+        <div className={styles.cardFooter}>
+          <GitHubLink />
+          <ThemeToggle theme={theme} onToggle={onToggleTheme} />
+        </div>
       </section>
     </main>
   );

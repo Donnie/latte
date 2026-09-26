@@ -3,6 +3,7 @@ import { languageName } from "../constants";
 import { fetchCorrectionOptions, fetchHasGrammarErrors, fetchTranslationOptions } from "../lib/openrouter";
 import type { ChatLog, ChatStore, Message, Pending, Settings, Side, Theme } from "../types";
 import ChatPane from "./ChatPane";
+import GitHubLink from "./GitHubLink";
 import ThemeToggle from "./ThemeToggle";
 import styles from "./ChatScreen.module.css";
 
@@ -258,6 +259,7 @@ export default function ChatScreen({
     <div className={styles.screen}>
       <header className={styles.header}>
         <span className={styles.brand}>☕ Latte</span>
+        <GitHubLink />
         <div className={styles.pairInfo}>
           <span className={styles.pair}>
             {languageName(settings.source)} ⇄ {languageName(settings.target)}
