@@ -126,8 +126,28 @@
   transition: opacity 0.15s ease;
 }
 
+.copy {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--muted);
+  border-radius: 6px;
+  padding: 2px 6px;
+  line-height: 1;
+  font-size: 12px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.copy:hover {
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+}
+
 .row:hover .delete,
-.delete:focus-visible {
+.row:hover .copy,
+.delete:focus-visible,
+.copy:focus-visible {
   opacity: 1;
 }
 
@@ -137,7 +157,8 @@
 }
 
 @media (hover: none) {
-  .delete {
+  .delete,
+  .copy {
     opacity: 0.45;
   }
 }
