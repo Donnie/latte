@@ -14,26 +14,30 @@ A two-pane chat translator for language pairs, powered by OpenRouter. Type in ei
 - **Three options every time**: each message arrives as three translation alternatives; pick the best fit or tap "None of these" for three fresh attempts
 - **Optional grammar check**: a per-pane toggle that reviews your draft with a checker model; if it finds mistakes you get up to three corrected versions, and you can send as is, dismiss, or edit
 - **Formal or informal**: choose the tonality your translations should carry
-- **Your models**: translation and grammar models are configurable, with suggestions pulled from the live OpenRouter catalogue (defaults: `z-ai/glm-5.3-flash` for translation, `typesafe/jev-router` for checks)
+- **Your models**: translation can use any OpenRouter text model, while the grammar check is limited to typed decision models that answer with probabilities instead of text (defaults: `z-ai/glm-5.3-flash` for translation, `~typesafe/jev-latest` for checks)
 - **Cost transparency**: a running total of API spend sits in the header
 - **Tidy controls**: delete any bubble, clear one pane, or log out to wipe everything
 - **Local first**: the API key, settings, chats, and costs live in localStorage only; logging out clears them all
 - **Errors handled**: failed requests offer a retry without losing your draft
 
-## Getting started
+## Use it now
+
+1. Open https://latte.donnie.in
+2. Get an OpenRouter API key: sign in at openrouter.ai, open Keys at openrouter.ai/keys, create a key, and copy it
+3. Paste the key into Latte, choose your languages and tonality, and start chatting
+
+Your key, chats, and spend total are stored only in this browser. Log out to erase everything.
+
+## Development
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open the printed URL, paste an OpenRouter API key, choose your languages, and start chatting.
+Regenerate the screenshots above with Playwright: run `npm run screenshots` while a preview server is up on port 4173.
 
-The four screenshots above are generated with Playwright: run `npm run screenshots` against a preview server on port 4173.
-
-## Deploy
-
-GitHub Pages ready: push to `main` and the included workflow builds and publishes the site. Enable it under Settings, Pages, Build and deployment, Source: GitHub Actions. Your API key never leaves the browser, so no repository secrets are needed.
+Deploy: push to `main` and the included workflow builds and publishes the site. Enable it under Settings, Pages, Build and deployment, Source: GitHub Actions. Your API key never leaves the browser, so no repository secrets are needed.
 
 ## Stack
 
