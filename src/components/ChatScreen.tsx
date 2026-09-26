@@ -77,7 +77,13 @@ export default function ChatScreen({
     setPendingFor(side, { requestId, kind: "grammar", status: "checking", sourceText: text, options: [], error: "" });
 
     try {
-      const check = await fetchHasGrammarErrors({ apiKey, text, language, signal: controller.signal });
+      const check = await fetchHasGrammarErrors({
+        apiKey,
+        model: settings.grammarModel,
+        text,
+        language,
+        signal: controller.signal,
+      });
       onAddCost(check.cost);
       if (stopped(controller, side, requestId)) return;
       const hasErrors = check.hasErrors;
@@ -87,7 +93,13 @@ export default function ChatScreen({
         return;
       }
 
-      const corrections = await fetchCorrectionOptions({ apiKey, text, language, signal: controller.signal });
+      const corrections = await fetchCorrectionOptions({
+        apiKey,
+        model: settings.translationModel,
+        text,
+        language,
+        signal: controller.signal,
+      });
       onAddCost(corrections.cost);
       if (stopped(controller, side, requestId)) return;
 
@@ -134,6 +146,7 @@ export default function ChatScreen({
     try {
       const result = await fetchTranslationOptions({
         apiKey,
+        model: settings.translationModel,
         text,
         sourceLanguage,
         targetLanguage,

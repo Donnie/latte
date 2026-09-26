@@ -1,8 +1,10 @@
 import type { ChatStore, Language } from "./types";
 
-export const MODEL = "z-ai/glm-5.3-flash";
-export const GRAMMAR_MODEL = "typesafe/jev-router";
+export const DEFAULT_TRANSLATION_MODEL = "z-ai/glm-5.3-flash";
+export const DEFAULT_GRAMMAR_MODEL = "typesafe/jev-router";
+export const DEFAULT_MODEL_SUGGESTIONS = [DEFAULT_TRANSLATION_MODEL, DEFAULT_GRAMMAR_MODEL];
 export const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+export const MODELS_URL = "https://openrouter.ai/api/v1/models";
 export const OPTIONS_PER_REQUEST = 3;
 
 export const STORAGE_KEYS = {

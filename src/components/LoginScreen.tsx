@@ -1,5 +1,4 @@
 import { useState, type FormEvent } from "react";
-import { MODEL } from "../constants";
 import styles from "./LoginScreen.module.css";
 
 interface LoginScreenProps {
@@ -22,7 +21,7 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
         <div className={styles.logo} aria-hidden="true">☕</div>
         <h1>Latte</h1>
         <p className={styles.tagline}>
-          A two-pane chat translator, powered by <code>{MODEL}</code> via OpenRouter.
+          A two-pane chat translator, powered by OpenRouter. Choose your language pair and models after logging in.
         </p>
         <form onSubmit={handleSubmit}>
           <label className={styles.label} htmlFor="openrouter-key">

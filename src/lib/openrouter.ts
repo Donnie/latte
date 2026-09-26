@@ -1,4 +1,4 @@
-import { GRAMMAR_MODEL, MODEL, OPENROUTER_URL, OPTIONS_PER_REQUEST } from "../constants";
+import { MODELS_URL, OPENROUTER_URL, OPTIONS_PER_REQUEST } from "../constants";
 import type { Formality } from "../types";
 
 export class OpenRouterError extends Error {}
@@ -9,6 +9,7 @@ interface RequestBase {
 }
 
 interface TranslationRequest extends RequestBase {
+  model: string;
   text: string;
   sourceLanguage: string;
   targetLanguage: string;
@@ -16,6 +17,7 @@ interface TranslationRequest extends RequestBase {
 }
 
 interface ProofreadRequest extends RequestBase {
+  model: string;
   text: string;
   language: string;
 }
@@ -46,10 +48,29 @@ export interface OptionsResult {
   cost: number;
 }
 
+export async function fetchAvailableModels(): Promise<string[]> {
+  const response = await fetch(MODELS_URL);
+  if (!response.ok) {
+    throw new OpenRouterError(`Could not load models — ${response.statusText || "request failed"}`);
+  }
+  const payload = (await response.json()) as { data?: Array<{ id?: unknown }> };
+  if (!Array.isArray(payload.data)) {
+    throw new OpenRouterError("Unexpected response from OpenRouter.");
+  }
+  const ids = payload.data
+    .map((model) => (typeof model.id === "string" ? model.id : ""))
+    .filter((id) => id.length > 0)
+    .sort((a, b) => a.localeCompare(b));
+  if (ids.length === 0) {
+    throw new OpenRouterError("No models available.");
+  }
+  return ids;
+}
+
 export async function fetchHasGrammarErrors(request: ProofreadRequest): Promise<HasErrorsResult> {
   const result = await requestCompletion(
     request,
-    GRAMMAR_MODEL,
+    request.model,
     [
       { role: "system", content: GRAMMAR_CHECK_PROMPT },
       { role: "user", content: `Language: ${request.language}\nText: ${request.text}` },
@@ -61,7 +82,7 @@ export async function fetchHasGrammarErrors(request: ProofreadRequest): Promise<
 export async function fetchCorrectionOptions(request: ProofreadRequest): Promise<OptionsResult> {
   const result = await requestCompletion(
     request,
-    MODEL,
+    request.model,
     [
       { role: "system", content: buildCorrectionPrompt(request.language) },
       { role: "user", content: request.text },
@@ -74,7 +95,7 @@ export async function fetchCorrectionOptions(request: ProofreadRequest): Promise
 export async function fetchTranslationOptions(request: TranslationRequest): Promise<OptionsResult> {
   const result = await requestCompletion(
     request,
-    MODEL,
+    request.model,
     [
       { role: "system", content: buildTranslationPrompt(request) },
       { role: "user", content: request.text },

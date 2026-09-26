@@ -18,6 +18,8 @@ export interface Settings {
   target: string;
   formality: Formality;
   grammarCheck: GrammarCheckSetting;
+  translationModel: string;
+  grammarModel: string;
 }
 
 export interface Message {

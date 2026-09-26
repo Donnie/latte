@@ -40,7 +40,8 @@
   font-weight: 600;
 }
 
-.field select {
+.field select,
+.field input {
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 10px 12px;
@@ -48,8 +49,15 @@
   outline: none;
 }
 
-.field select:focus {
+.field select:focus,
+.field input:focus {
   border-color: var(--accent);
+}
+
+.modelsHint {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .swap {
