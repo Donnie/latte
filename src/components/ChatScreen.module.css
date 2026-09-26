@@ -78,6 +78,7 @@
 }
 
 .panes {
+  --pane-height: 60dvh;
   flex: 1;
   min-height: 0;
   display: grid;
@@ -88,8 +89,14 @@
 }
 
 @media (max-width: 860px) {
+  .screen {
+    height: auto;
+    min-height: 100%;
+  }
+
   .panes {
     grid-template-columns: 1fr;
+    grid-auto-rows: var(--pane-height);
   }
 
   .header {
