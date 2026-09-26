@@ -2,7 +2,7 @@ import { useState } from "react";
 import ChatScreen, { chatKeyOf } from "./components/ChatScreen";
 import LoginScreen from "./components/LoginScreen";
 import SetupScreen from "./components/SetupScreen";
-import { EMPTY_CHATS, DEFAULT_GRAMMAR_MODEL, DEFAULT_TRANSLATION_MODEL, STORAGE_KEYS } from "./constants";
+import { EMPTY_CHATS, DEFAULT_GRAMMAR_MODEL, DEFAULT_TRANSLATION_MODEL, LEGACY_GRAMMAR_MODEL, STORAGE_KEYS } from "./constants";
 import { usePersistentState } from "./hooks/usePersistentState";
 import { clearAppStorage } from "./lib/storage";
 import type { ChatStore, GrammarCheckSetting, Message, Screen, Settings, Side } from "./types";
@@ -98,7 +98,10 @@ function normalizeSettings(value: unknown): Settings | null {
     formality: candidate.formality === "formal" ? "formal" : "informal",
     grammarCheck: normalizeGrammarCheck(candidate.grammarCheck),
     translationModel: normalizeModel(candidate.translationModel, DEFAULT_TRANSLATION_MODEL),
-    grammarModel: normalizeModel(candidate.grammarModel, DEFAULT_GRAMMAR_MODEL),
+    grammarModel: normalizeModel(
+      candidate.grammarModel === LEGACY_GRAMMAR_MODEL ? DEFAULT_GRAMMAR_MODEL : candidate.grammarModel,
+      DEFAULT_GRAMMAR_MODEL,
+    ),
   };
 }
 
