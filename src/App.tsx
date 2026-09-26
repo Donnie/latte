@@ -75,7 +75,11 @@ export default function App() {
   }
 
   function addCost(cost: number) {
-    setTotalCost((prev) => (Number.isFinite(prev) ? prev : 0) + cost);
+    if (!Number.isFinite(cost)) return;
+    setTotalCost((prev) => {
+      const base = Number.isFinite(prev) ? prev : 0;
+      return (Math.round(base * 1e9) + Math.round(cost * 1e9)) / 1e9;
+    });
   }
 
   function logout() {
