@@ -42,8 +42,10 @@ export type PendingKind = "grammar" | "translation";
 export interface Pending {
   requestId: string;
   kind: PendingKind;
-  status: "checking" | "loading" | "corrections" | "ready" | "error";
+  status: "checking" | "loading" | "streaming" | "corrections" | "ready" | "error";
   sourceText: string;
   options: string[];
+  settled?: boolean[];
+  pickedIndex?: number;
   error: string;
 }

@@ -15,7 +15,7 @@ interface ChatPaneProps {
   grammarCheck: boolean;
   onSend(text: string): void;
   onToggleGrammarCheck(enabled: boolean): void;
-  onPick(option: string): void;
+  onPick(index: number): void;
   onPickCorrection(option: string): void;
   onSendOriginal(): void;
   onDismiss(): void;
@@ -47,6 +47,8 @@ export default function ChatPane({
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const copyTimer = useRef<number | null>(null);
   const isBusy = pending?.status === "checking" || pending?.status === "loading";
+  const networkBusy =
+    pending?.status === "checking" || pending?.status === "loading" || pending?.status === "streaming";
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
@@ -98,7 +100,10 @@ export default function ChatPane({
   return (
     <section className={styles.pane} aria-label={`${language} conversation`}>
       <header className={styles.header}>
-        <h2>{language}</h2>
+        <div className={styles.titleGroup}>
+          <h2>{language}</h2>
+          {networkBusy && <span className={styles.spinner} role="status" aria-label="Network activity" />}
+        </div>
         <div className={styles.headerActions}>
           <ToggleSwitch label="Grammar" checked={grammarCheck} onChange={onToggleGrammarCheck} />
           <button
@@ -185,21 +190,28 @@ export default function ChatPane({
           </div>
         )}
 
-        {pending?.status === "ready" && (
+        {(pending?.status === "streaming" || pending?.status === "ready") && (
           <div className={styles.options}>
-            {pending.options.map((option, index) => (
-              <button
-                key={`${index}-${option}`}
-                type="button"
-                className={styles.option}
-                onClick={() => onPick(option)}
-              >
-                {option}
+            {(pending.pickedIndex !== undefined ? [pending.pickedIndex] : pending.options.map((_, index) => index)).map(
+              (index) => {
+                const settled = pending.settled?.[index] ?? true;
+                return (
+                  <button
+                    key={index}
+                    type="button"
+                    className={settled ? styles.option : `${styles.option} ${styles.optionStreaming}`}
+                    onClick={() => onPick(index)}
+                  >
+                    {pending.options[index]}
+                  </button>
+                );
+              },
+            )}
+            {pending.pickedIndex === undefined && (
+              <button type="button" className={styles.boxLink} onClick={handleDismiss}>
+                None of these
               </button>
-            ))}
-            <button type="button" className={styles.boxLink} onClick={handleDismiss}>
-              None of these
-            </button>
+            )}
           </div>
         )}
 

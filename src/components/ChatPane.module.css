@@ -23,6 +23,29 @@
   gap: 6px;
 }
 
+.titleGroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.spinner {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: paneSpin 0.8s linear infinite;
+}
+
+@keyframes paneSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .clearButton {
   background: none;
   border: 1px solid var(--border);
@@ -296,6 +319,19 @@
 .option:focus-visible {
   border-color: var(--accent);
   background: var(--accent-soft);
+}
+
+.optionStreaming::after {
+  content: "▍";
+  margin-left: 1px;
+  opacity: 0.7;
+  animation: optionCaret 0.9s ease-in-out infinite;
+}
+
+@keyframes optionCaret {
+  50% {
+    opacity: 0;
+  }
 }
 
 .error {
