@@ -43,7 +43,7 @@
   padding: 1px 6px;
 }
 
-form {
+.loginForm {
   display: flex;
   flex-direction: column;
   gap: 10px;

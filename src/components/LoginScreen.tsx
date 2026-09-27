@@ -48,7 +48,7 @@ export default function LoginScreen({ onLogin, theme, onToggleTheme, oauthPendin
           Sign in with OpenRouter
         </button>
         <div className={styles.divider}>or paste an existing key</div>
-        <form onSubmit={handleSubmit}>
+        <form className={styles.loginForm} onSubmit={handleSubmit}>
           <label className={styles.label} htmlFor="openrouter-key">
             OpenRouter API key
           </label>
