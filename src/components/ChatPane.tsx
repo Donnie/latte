@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { Message, Pending, Side } from "../types";
+import ToggleSwitch from "./ToggleSwitch";
 import styles from "./ChatPane.module.css";
 
 interface ChatPaneProps {
@@ -78,16 +79,7 @@ export default function ChatPane({
       <header className={styles.header}>
         <h2>{language}</h2>
         <div className={styles.headerActions}>
-          <label
-            className={grammarCheck ? `${styles.grammarToggle} ${styles.grammarToggleOn}` : styles.grammarToggle}
-          >
-            <input
-              type="checkbox"
-              checked={grammarCheck}
-              onChange={(event) => onToggleGrammarCheck(event.target.checked)}
-            />
-            Grammar check
-          </label>
+          <ToggleSwitch label="Grammar" checked={grammarCheck} onChange={onToggleGrammarCheck} />
           <button
             type="button"
             className={styles.clearButton}
@@ -102,7 +94,7 @@ export default function ChatPane({
 
       <div className={styles.messages} ref={listRef}>
         {messages.length === 0 && !pending && (
-          <p className={styles.hint}>Type below to get three {language} options to choose from.</p>
+          <p className={styles.hint}>Use the other pane to get an instant {language} translation.</p>
         )}
 
         {messages.map((message) => (

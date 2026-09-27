@@ -2,10 +2,18 @@
 
 A two-pane chat translator for language pairs, powered by OpenRouter. Type in either pane, pick from three natural translations, and let the optional grammar check catch mistakes before anything is sent. Fully frontend: no backend, no accounts, nothing stored outside your browser.
 
+## Desktop
+
 | | |
 | --- | --- |
 | ![Login](docs/screenshots/login.png) | ![Setup](docs/screenshots/setup.png) |
-| ![Two-pane chat](docs/screenshots/chat-web.png) | ![Chat on mobile](docs/screenshots/chat-mobile.png) |
+| ![Two-pane chat](docs/screenshots/chat-desktop.png) | |
+
+## Mobile
+
+| |
+| --- |
+| ![Grammar suggestions on mobile](docs/screenshots/chat-mobile.png) |
 
 ## Features
 
@@ -38,7 +46,7 @@ npm install
 npm run dev
 ```
 
-Regenerate the screenshots above with Playwright: run `npm run screenshots` while a preview server is up on port 4173.
+Regenerate the screenshots above with Playwright: run `npm run screenshots` while a preview server is up on port 4173. The script drives the real app from scratch — login, setup, and live conversations — using the OpenRouter key from `.env` (`KEY=…`) or `OPENROUTER_API_KEY`, so it makes real API calls and incurs a tiny amount of spend.
 
 Deploy: push to `main` and the included workflow builds and publishes the site. Enable it under Settings, Pages, Build and deployment, Source: GitHub Actions. Your API key never leaves the browser, so no repository secrets are needed.
 

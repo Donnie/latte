@@ -1,10 +1,12 @@
 import { useRef, useState } from "react";
 import { languageName } from "../constants";
 import { fetchCorrectionOptions, fetchHasGrammarErrors, fetchTranslationOptions } from "../lib/openrouter";
+import { uuid } from "../lib/uuid";
 import type { ChatLog, ChatStore, Message, Pending, Settings, Side, Theme } from "../types";
 import ChatPane from "./ChatPane";
 import GitHubLink from "./GitHubLink";
 import ThemeToggle from "./ThemeToggle";
+import ToggleSwitch from "./ToggleSwitch";
 import styles from "./ChatScreen.module.css";
 
 interface ChatScreenProps {
@@ -65,7 +67,7 @@ export default function ChatScreen({
     if (settings.grammarCheck[side]) {
       await grammarCheck(side, text);
     } else {
-      await postForTranslation(side, crypto.randomUUID(), text);
+      await postForTranslation(side, uuid(), text);
     }
   }
 
@@ -76,13 +78,20 @@ export default function ChatScreen({
     });
   }
 
+  function handleToggleFormality(formal: boolean) {
+    onSettingsChange({
+      ...settings,
+      formality: formal ? "formal" : "informal",
+    });
+  }
+
   async function grammarCheck(side: Side, text: string) {
     const language = languageName(side === "left" ? settings.source : settings.target);
 
     controllers.current[side]?.abort();
     const controller = new AbortController();
     controllers.current[side] = controller;
-    const requestId = crypto.randomUUID();
+    const requestId = uuid();
 
     setPendingFor(side, { requestId, kind: "grammar", status: "checking", sourceText: text, options: [], error: "" });
 
@@ -142,7 +151,7 @@ export default function ChatScreen({
     controllers.current[inputSide]?.abort();
     const controller = new AbortController();
     controllers.current[inputSide] = controller;
-    const requestId = crypto.randomUUID();
+    const requestId = uuid();
 
     setPendingFor(targetSide, {
       requestId,
@@ -225,7 +234,7 @@ export default function ChatScreen({
   }
 
   function appendMessage(side: Side, text: string) {
-    onAppendMessage(chatKey, { id: crypto.randomUUID(), side, text, createdAt: Date.now() });
+    onAppendMessage(chatKey, { id: uuid(), side, text, createdAt: Date.now() });
   }
 
   function stopped(controller: AbortController, side: Side, requestId: string): boolean {
@@ -264,9 +273,13 @@ export default function ChatScreen({
           <span className={styles.pair}>
             {languageName(settings.source)} ⇄ {languageName(settings.target)}
           </span>
-          <span className={styles.chip}>{settings.formality}</span>
         </div>
         <div className={styles.actions}>
+          <ToggleSwitch
+            label="Formal"
+            checked={settings.formality === "formal"}
+            onChange={handleToggleFormality}
+          />
           <ThemeToggle theme={theme} onToggle={onToggleTheme} />
           <span className={styles.costChip} title="Total OpenRouter spend on this device">
             Σ {formatCost(totalCost)}
