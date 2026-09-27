@@ -16,7 +16,7 @@ interface ChatPaneProps {
   onSend(text: string): void;
   onToggleGrammarCheck(enabled: boolean): void;
   onPick(index: number): void;
-  onPickCorrection(option: string): void;
+  onPickCorrection(index: number): void;
   onSendOriginal(): void;
   onDismiss(): void;
   onRetry(): void;
@@ -166,7 +166,7 @@ export default function ChatPane({
           </div>
         )}
 
-        {pending?.status === "corrections" && (
+        {(pending?.status === "corrections" || (pending?.kind === "grammar" && pending?.status === "streaming")) && (
           <div className={styles.correction}>
             <div className={styles.boxHeader}>
               <span className={styles.boxTitle}>Grammar suggestions</span>
@@ -174,19 +174,28 @@ export default function ChatPane({
                 ✕
               </button>
             </div>
-            {pending.options.map((option, index) => (
-              <button
-                key={`${index}-${option}`}
-                type="button"
-                className={styles.correctionOption}
-                onClick={() => onPickCorrection(option)}
-              >
-                {option}
+            {(pending.pickedIndex !== undefined ? [pending.pickedIndex] : pending.options.map((_, index) => index)).map(
+              (index) => {
+                const settled = pending.settled?.[index] ?? true;
+                return (
+                  <button
+                    key={index}
+                    type="button"
+                    className={
+                      settled ? styles.correctionOption : `${styles.correctionOption} ${styles.optionStreaming}`
+                    }
+                    onClick={() => onPickCorrection(index)}
+                  >
+                    {pending.options[index]}
+                  </button>
+                );
+              },
+            )}
+            {pending.pickedIndex === undefined && (
+              <button type="button" className={styles.boxLink} onClick={onSendOriginal}>
+                Send as is
               </button>
-            ))}
-            <button type="button" className={styles.boxLink} onClick={onSendOriginal}>
-              Send as is
-            </button>
+            )}
           </div>
         )}
 

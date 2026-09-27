@@ -1,13 +1,13 @@
 import { useRef, useState } from "react";
 import { languageName, OPTIONS_PER_REQUEST } from "../constants";
 import {
-  fetchCorrectionOptions,
   fetchHasGrammarErrors,
+  streamCorrectionOptions,
   streamTranslationOptions,
   type CompletionResult,
 } from "../lib/openrouter";
 import { uuid } from "../lib/uuid";
-import type { ChatLog, ChatStore, Message, Pending, Settings, Side, Theme } from "../types";
+import type { ChatLog, ChatStore, Message, Pending, PendingKind, Settings, Side, Theme } from "../types";
 import ChatPane from "./ChatPane";
 import GitHubLink from "./GitHubLink";
 import ThemeToggle from "./ThemeToggle";
@@ -67,7 +67,12 @@ export default function ChatScreen({
   const [pending, setPending] = useState<Partial<Record<Side, Pending>>>({});
   const controllers = useRef<Partial<Record<Side, AbortController>>>({});
   const streamsRef = useRef<
-    Partial<Record<Side, { requestId: string; aborts: Array<() => void>; promises: Promise<CompletionResult>[] }>>
+    Partial<
+      Record<
+        Side,
+        { requestId: string; kind: PendingKind; aborts: Array<() => void>; promises: Promise<CompletionResult>[] }
+      >
+    >
   >({});
   const pendingRequestRef = useRef<Partial<Record<Side, string>>>({});
   const pickedIndexRef = useRef<Partial<Record<Side, number>>>({});
@@ -101,6 +106,7 @@ export default function ChatScreen({
     controllers.current[side]?.abort();
     const controller = new AbortController();
     controllers.current[side] = controller;
+    abortStreams(side);
     abortStreams(otherSide(side));
     const requestId = uuid();
 
@@ -116,31 +122,89 @@ export default function ChatScreen({
       });
       onAddCost(check.cost);
       if (stopped(controller, side, requestId)) return;
-      const hasErrors = check.hasErrors;
 
-      if (!hasErrors) {
+      if (!check.hasErrors) {
         await postForTranslation(side, requestId, text);
         return;
       }
 
-      const corrections = await fetchCorrectionOptions({
-        apiKey,
-        model: settings.translationModel,
-        text,
-        language,
-        signal: controller.signal,
-      });
-      onAddCost(corrections.cost);
-      if (stopped(controller, side, requestId)) return;
+      const patchOption = (index: number, full: string) => {
+        setPending((prev) => {
+          const current = prev[side];
+          if (!current || current.requestId !== requestId) return prev;
+          if (current.pickedIndex !== undefined && current.pickedIndex !== index) return prev;
+          if (current.options[index] === full) return prev;
+          const options = current.options.map((option, i) => (i === index ? full : option));
+          return { ...prev, [side]: { ...current, options } };
+        });
+      };
+
+      const markSettled = (index: number, content: string) => {
+        setPending((prev) => {
+          const current = prev[side];
+          if (!current || current.requestId !== requestId) return prev;
+          const options = current.options.map((option, i) => (i === index ? content : option));
+          const settled = (current.settled ?? current.options.map(() => false)).map((done, i) =>
+            i === index ? true : done,
+          );
+          return { ...prev, [side]: { ...current, options, settled } };
+        });
+      };
+
+      const markReady = () => {
+        setPending((prev) => {
+          const current = prev[side];
+          if (!current || current.requestId !== requestId || current.status !== "streaming") return prev;
+          return { ...prev, [side]: { ...current, status: "corrections" } };
+        });
+      };
 
       setPendingFor(side, {
         requestId,
         kind: "grammar",
-        status: "corrections",
+        status: "streaming",
         sourceText: text,
-        options: corrections.options,
+        options: Array.from({ length: OPTIONS_PER_REQUEST }, () => ""),
+        settled: Array.from({ length: OPTIONS_PER_REQUEST }, () => false),
         error: "",
       });
+
+      const aborts: Array<() => void> = [];
+      const promises: Promise<CompletionResult>[] = [];
+      let settledCount = 0;
+
+      for (let index = 0; index < OPTIONS_PER_REQUEST; index += 1) {
+        const handle = streamCorrectionOptions(
+          { apiKey, model: settings.translationModel, text, language },
+          (full) => patchOption(index, full),
+        );
+        aborts.push(handle.abort);
+        promises.push(handle.promise);
+        void handle.promise.then(
+          (result) => {
+            if (!isCurrentRequest(side, requestId)) return;
+            onAddCost(result.cost);
+            settledCount += 1;
+            markSettled(index, result.content);
+            if (settledCount === OPTIONS_PER_REQUEST) markReady();
+          },
+          (error) => {
+            if (error instanceof DOMException && error.name === "AbortError") return;
+            if (!isCurrentRequest(side, requestId)) return;
+            if (pickedIndexRef.current[side] !== undefined && pickedIndexRef.current[side] !== index) return;
+            setPendingFor(side, {
+              requestId,
+              kind: "grammar",
+              status: "error",
+              sourceText: text,
+              options: [],
+              error: error instanceof Error ? error.message : "Something went wrong.",
+            });
+          },
+        );
+      }
+
+      streamsRef.current[side] = { requestId, kind: "grammar", aborts, promises };
     } catch (error) {
       if (stopped(controller, side, requestId)) return;
       setPendingFor(side, {
@@ -248,7 +312,7 @@ export default function ChatScreen({
       );
     }
 
-    streamsRef.current[targetSide] = { requestId, aborts, promises };
+    streamsRef.current[targetSide] = { requestId, kind: "translation", aborts, promises };
   }
 
   async function postForTranslation(side: Side, requestId: string, text: string) {
@@ -300,15 +364,41 @@ export default function ChatScreen({
     clearPending(targetSide);
   }
 
-  function handlePickCorrection(side: Side, corrected: string) {
+  function handlePickCorrection(side: Side, index: number) {
     const state = pending[side];
-    if (!state) return;
-    void postForTranslation(side, state.requestId, corrected);
+    if (!state || state.kind !== "grammar") return;
+    pickedIndexRef.current[side] = index;
+    setPending((prev) => {
+      const current = prev[side];
+      if (!current || current.requestId !== state.requestId) return prev;
+      return { ...prev, [side]: { ...current, pickedIndex: index } };
+    });
+    const entry = streamsRef.current[side];
+    if (entry && entry.requestId === state.requestId) {
+      entry.aborts.forEach((abort, i) => {
+        if (i !== index) abort();
+      });
+      void entry.promises[index].then(
+        (result) => {
+          if (!isCurrentRequest(side, entry.requestId)) return;
+          delete streamsRef.current[side];
+          void postForTranslation(side, entry.requestId, result.content);
+        },
+        () => {
+          /* cleared or superseded mid-stream — the creation-time handler owns error UI */
+        },
+      );
+      return;
+    }
+    if (state.options[index]) {
+      void postForTranslation(side, state.requestId, state.options[index]);
+    }
   }
 
   function handleSendOriginal(side: Side) {
     const state = pending[side];
     if (!state) return;
+    abortStreams(side);
     void postForTranslation(side, state.requestId, state.sourceText);
   }
 
@@ -418,7 +508,7 @@ export default function ChatScreen({
           onSend={(text) => handleSend("left", text)}
           onToggleGrammarCheck={(enabled) => handleToggleGrammarCheck("left", enabled)}
           onPick={(index) => handlePick("left", index)}
-          onPickCorrection={(option) => handlePickCorrection("left", option)}
+          onPickCorrection={(index) => handlePickCorrection("left", index)}
           onSendOriginal={() => handleSendOriginal("left")}
           onDismiss={() => dismissPending("left")}
           onRetry={() => handleRetry("left")}
@@ -435,7 +525,7 @@ export default function ChatScreen({
           onSend={(text) => handleSend("right", text)}
           onToggleGrammarCheck={(enabled) => handleToggleGrammarCheck("right", enabled)}
           onPick={(index) => handlePick("right", index)}
-          onPickCorrection={(option) => handlePickCorrection("right", option)}
+          onPickCorrection={(index) => handlePickCorrection("right", index)}
           onSendOriginal={() => handleSendOriginal("right")}
           onDismiss={() => dismissPending("right")}
           onRetry={() => handleRetry("right")}

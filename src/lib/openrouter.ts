@@ -1,4 +1,4 @@
-import { DECISIONS_URL, MODELS_URL, OPENROUTER_URL, OPTIONS_PER_REQUEST } from "../constants";
+import { DECISIONS_URL, MODELS_URL, OPENROUTER_URL } from "../constants";
 import { normalizeMultiline } from "./text";
 import type { Formality } from "../types";
 
@@ -54,11 +54,6 @@ export interface CompletionResult {
 
 export interface HasErrorsResult {
   hasErrors: boolean;
-  cost: number;
-}
-
-export interface OptionsResult {
-  options: string[];
   cost: number;
 }
 
@@ -126,17 +121,19 @@ export async function fetchHasGrammarErrors(request: ProofreadRequest): Promise<
   return { hasErrors: answer.noul > 0.5, cost };
 }
 
-export async function fetchCorrectionOptions(request: ProofreadRequest): Promise<OptionsResult> {
-  const result = await requestCompletion(
+export function streamCorrectionOptions(
+  request: ProofreadRequest,
+  onDelta: (full: string) => void,
+): StreamedCompletion {
+  return streamChatCompletion(
     request,
-    request.model,
     [
       { role: "system", content: buildCorrectionPrompt(request.language) },
       { role: "user", content: request.text },
     ],
     0.3,
+    onDelta,
   );
-  return { options: parseOptions(result.content), cost: result.cost };
 }
 
 export interface StreamedCompletion {
@@ -167,13 +164,10 @@ function buildCorrectionPrompt(language: string): string {
     "You are a proofreading assistant.",
     `Correct the user's text written in ${language}: fix spelling, grammar and punctuation.`,
     "Preserve meaning, tone and wording; do not add or remove information.",
-    "Preserve the line breaks and paragraph structure of the user's text in every corrected version.",
-    `Give up to ${OPTIONS_PER_REQUEST} corrected versions, all equally valid, varying only in minor punctuation or phrasing choices.`,
+    "Preserve the line breaks and paragraph structure of the user's text.",
     "Keep names, numbers, URLs and code unchanged.",
     NO_EM_DASH_RULE,
-    "Reply with strict JSON only, no markdown, exactly in this shape:",
-    '{"options": ["<correction 1>", "<correction 2>", "<correction 3>"]}',
-    "Each option is a single JSON string that may span several lines; encode any line break inside it as \\n.",
+    "Reply with the corrected text only: no preamble, no quotes around it, no explanations.",
   ].join(" ");
 }
 
@@ -193,39 +187,6 @@ function buildTranslationPrompt(request: TranslationRequest): string {
     NO_EM_DASH_RULE,
     "Reply with the translation only: no preamble, no quotes around it, no explanations.",
   ].join(" ");
-}
-
-async function requestCompletion(
-  request: RequestBase,
-  model: string,
-  messages: ChatMessage[],
-  temperature?: number,
-): Promise<CompletionResult> {
-  const body: Record<string, unknown> = { model, messages };
-  if (temperature !== undefined) body.temperature = temperature;
-
-  const response = await fetch(OPENROUTER_URL, {
-    method: "POST",
-    headers: buildHeaders(request.apiKey),
-    body: JSON.stringify(body),
-    signal: request.signal,
-  });
-
-  if (!response.ok) {
-    throw new OpenRouterError(await describeHttpError(response));
-  }
-
-  const payload = (await response.json()) as OpenRouterResponse;
-  if (payload.error) {
-    throw new OpenRouterError(payload.error.message ?? "OpenRouter returned an error.");
-  }
-
-  const content = payload.choices?.[0]?.message?.content;
-  if (typeof content !== "string") {
-    throw new OpenRouterError("Unexpected response from OpenRouter.");
-  }
-  const cost = typeof payload.usage?.cost === "number" ? payload.usage.cost : 0;
-  return { content, cost };
 }
 
 function buildHeaders(apiKey: string): HeadersInit {
@@ -352,83 +313,10 @@ async function describeHttpError(response: Response): Promise<string> {
   return `OpenRouter error ${response.status} — ${detail}`;
 }
 
-export function parseOptions(raw: string): string[] {
-  const jsonText = extractJson(raw);
-  if (jsonText) {
-    const parsed = parseOptionsJson(jsonText);
-    if (parsed) return parsed;
-  }
-  return parsePlainLines(raw);
-}
-
-function parseOptionsJson(jsonText: string): string[] | null {
-  for (const candidate of [jsonText, escapeRawNewlines(jsonText)]) {
-    try {
-      const parsed = JSON.parse(candidate) as { options?: unknown };
-      if (!Array.isArray(parsed.options)) continue;
-      const options = parsed.options
-        .map((option) => (typeof option === "string" ? normalizeMultiline(option) : ""))
-        .filter((option) => option.length > 0);
-      if (options.length > 0) return options.slice(0, OPTIONS_PER_REQUEST).map(stripEmDashes);
-    } catch {
-      continue;
-    }
-  }
-  return null;
-}
-
-function escapeRawNewlines(json: string): string {
-  let result = "";
-  let inString = false;
-  for (let index = 0; index < json.length; index += 1) {
-    const char = json[index];
-    if (inString && char === "\\") {
-      result += char + (json[index + 1] ?? "");
-      index += 1;
-      continue;
-    }
-    if (char === '"') inString = !inString;
-    if (inString && char === "\n") {
-      result += "\\n";
-      continue;
-    }
-    if (inString && (char === "\r" || char === "\t")) {
-      result += char === "\t" ? "\\t" : "";
-      continue;
-    }
-    result += char;
-  }
-  return result;
-}
-
 function stripEmDashes(text: string): string {
   return text
     .replace(/[ \t]*—[ \t]*/g, ", ")
     .replace(/,[ \t]*([.,!?;:…])/g, "$1")
     .replace(/,\s*$/, "")
     .trim();
-}
-
-function parsePlainLines(raw: string): string[] {
-  const lines = normalizeMultiline(raw)
-    .split("\n")
-    .map((line) =>
-      line
-        .replace(/^\s*(?:[-*•]|\d+[.)])?\s*/, "")
-        .replace(/^["“]|["”],?$/g, "")
-        .trim(),
-    )
-    .filter((line) => line.length > 0);
-
-  if (lines.length > 0) return lines.slice(0, OPTIONS_PER_REQUEST);
-
-  throw new OpenRouterError("Could not read the options from the model response.");
-}
-
-function extractJson(raw: string): string | null {
-  const cleaned = raw.replace(/```(?:json)?/g, "").trim();
-  const start = cleaned.indexOf("{");
-  const end = cleaned.lastIndexOf("}");
-  if (start === -1 || end <= start) return null;
-  return cleaned.slice(start, end + 1);
 }
