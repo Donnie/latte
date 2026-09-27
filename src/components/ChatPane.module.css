@@ -265,6 +265,7 @@
   padding: 8px 11px;
   font-size: 13.5px;
   line-height: 1.45;
+  white-space: pre-wrap;
   overflow-wrap: anywhere;
   transition:
     border-color 0.15s ease,
@@ -284,6 +285,7 @@
   border-radius: 12px;
   padding: 10px 13px;
   line-height: 1.5;
+  white-space: pre-wrap;
   overflow-wrap: anywhere;
   transition:
     border-color 0.15s ease,
@@ -337,30 +339,38 @@
 
 .form {
   display: flex;
+  align-items: flex-end;
   gap: 8px;
   padding: 10px;
   border-top: 1px solid var(--border);
 }
 
-.form input {
+.form textarea {
   flex: 1;
   min-width: 0;
+  max-height: 132px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: 18px;
   padding: 10px 15px;
   background: var(--bg);
   outline: none;
+  font: inherit;
+  color: var(--ink);
+  line-height: 1.45;
+  resize: none;
+  overflow-y: auto;
 }
 
-.form input:focus {
+.form textarea:focus {
   border-color: var(--accent);
 }
 
-.form input:disabled {
+.form textarea:disabled {
   opacity: 0.6;
 }
 
 .form button {
+  flex-shrink: 0;
   border: none;
   background: var(--accent);
   color: #fff;

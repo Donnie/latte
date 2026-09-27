@@ -1,7 +1,13 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import type { Message, Pending, Side } from "../types";
 import ToggleSwitch from "./ToggleSwitch";
 import styles from "./ChatPane.module.css";
+
+const INPUT_MAX_HEIGHT = 132;
+
+function normalizeDraft(text: string): string {
+  return text.replace(/\r\n?/g, "\n").trim();
+}
 
 interface ChatPaneProps {
   side: Side;
@@ -41,12 +47,20 @@ export default function ChatPane({
   const [draft, setDraft] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const copyTimer = useRef<number | null>(null);
   const isBusy = pending?.status === "checking" || pending?.status === "loading";
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
   }, [messages.length, pending]);
+
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, INPUT_MAX_HEIGHT)}px`;
+  }, [draft]);
 
   useEffect(() => () => {
     if (copyTimer.current !== null) window.clearTimeout(copyTimer.current);
@@ -62,7 +76,17 @@ export default function ChatPane({
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const text = draft.trim();
+    submitDraft();
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+    event.preventDefault();
+    submitDraft();
+  }
+
+  function submitDraft() {
+    const text = normalizeDraft(draft);
     if (!text || isBusy || inputBlocked) return;
     onSend(text);
     setDraft("");
@@ -200,14 +224,17 @@ export default function ChatPane({
       </div>
 
       <form className={styles.form} onSubmit={handleSubmit}>
-        <input
+        <textarea
+          ref={inputRef}
+          rows={1}
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={handleKeyDown}
           placeholder={`Write in ${language}…`}
           disabled={isBusy || inputBlocked}
           aria-label={`Write in ${language}`}
         />
-        <button type="submit" disabled={isBusy || inputBlocked || draft.trim() === ""}>
+        <button type="submit" disabled={isBusy || inputBlocked || normalizeDraft(draft) === ""}>
           Send
         </button>
       </form>

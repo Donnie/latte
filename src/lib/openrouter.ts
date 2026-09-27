@@ -159,11 +159,13 @@ function buildCorrectionPrompt(language: string): string {
     "You are a proofreading assistant.",
     `Correct the user's text written in ${language}: fix spelling, grammar and punctuation.`,
     "Preserve meaning, tone and wording; do not add or remove information.",
+    "Preserve the line breaks and paragraph structure of the user's text in every corrected version.",
     `Give up to ${OPTIONS_PER_REQUEST} corrected versions, all equally valid, varying only in minor punctuation or phrasing choices.`,
     "Keep names, numbers, URLs and code unchanged.",
     NO_EM_DASH_RULE,
     "Reply with strict JSON only, no markdown, exactly in this shape:",
     '{"options": ["<correction 1>", "<correction 2>", "<correction 3>"]}',
+    "Each option is a single JSON string that may span several lines; encode any line break inside it as \\n.",
   ].join(" ");
 }
 
@@ -178,10 +180,12 @@ function buildTranslationPrompt(request: TranslationRequest): string {
     `Translate the user's text from ${request.sourceLanguage} into ${request.targetLanguage}.`,
     `Use a ${register} register.`,
     `Give exactly ${OPTIONS_PER_REQUEST} alternative translations: same meaning, natural and idiomatic, with varied wording and structure.`,
+    "The user's text may contain several lines or paragraphs; keep the same line breaks and paragraph structure inside every translation.",
     "Keep names, numbers, URLs and code unchanged.",
     NO_EM_DASH_RULE,
     "Reply with strict JSON only, no markdown, exactly in this shape:",
     '{"options": ["<option 1>", "<option 2>", "<option 3>"]}',
+    "Each option is a single JSON string that may span several lines; encode any line break inside it as \\n.",
   ].join(" ");
 }
 
@@ -239,34 +243,70 @@ async function describeHttpError(response: Response): Promise<string> {
   return `OpenRouter error ${response.status} — ${detail}`;
 }
 
-function parseOptions(raw: string): string[] {
+export function parseOptions(raw: string): string[] {
   const jsonText = extractJson(raw);
   if (jsonText) {
-    try {
-      const parsed = JSON.parse(jsonText) as { options?: unknown };
-      if (Array.isArray(parsed.options)) {
-        const options = parsed.options
-          .map((option) => (typeof option === "string" ? option.trim() : ""))
-          .filter((option) => option.length > 0);
-        if (options.length > 0) return options.slice(0, OPTIONS_PER_REQUEST).map(stripEmDashes);
-      }
-    } catch {
-      return parsePlainLines(raw);
-    }
+    const parsed = parseOptionsJson(jsonText);
+    if (parsed) return parsed;
   }
   return parsePlainLines(raw);
 }
 
+function parseOptionsJson(jsonText: string): string[] | null {
+  for (const candidate of [jsonText, escapeRawNewlines(jsonText)]) {
+    try {
+      const parsed = JSON.parse(candidate) as { options?: unknown };
+      if (!Array.isArray(parsed.options)) continue;
+      const options = parsed.options
+        .map((option) => (typeof option === "string" ? cleanOption(option) : ""))
+        .filter((option) => option.length > 0);
+      if (options.length > 0) return options.slice(0, OPTIONS_PER_REQUEST).map(stripEmDashes);
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+function cleanOption(text: string): string {
+  return text.replace(/\r\n?/g, "\n").trim();
+}
+
+function escapeRawNewlines(json: string): string {
+  let result = "";
+  let inString = false;
+  for (let index = 0; index < json.length; index += 1) {
+    const char = json[index];
+    if (inString && char === "\\") {
+      result += char + (json[index + 1] ?? "");
+      index += 1;
+      continue;
+    }
+    if (char === '"') inString = !inString;
+    if (inString && char === "\n") {
+      result += "\\n";
+      continue;
+    }
+    if (inString && (char === "\r" || char === "\t")) {
+      result += char === "\t" ? "\\t" : "";
+      continue;
+    }
+    result += char;
+  }
+  return result;
+}
+
 function stripEmDashes(text: string): string {
   return text
-    .replace(/\s*—\s*/g, ", ")
-    .replace(/,\s*([.,!?;:…])/g, "$1")
+    .replace(/[ \t]*—[ \t]*/g, ", ")
+    .replace(/,[ \t]*([.,!?;:…])/g, "$1")
     .replace(/,\s*$/, "")
     .trim();
 }
 
 function parsePlainLines(raw: string): string[] {
   const lines = raw
+    .replace(/\r\n?/g, "\n")
     .split("\n")
     .map((line) =>
       line
