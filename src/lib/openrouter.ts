@@ -1,4 +1,5 @@
-import { DECISIONS_URL, MODELS_URL, OPENROUTER_URL, OPTIONS_PER_REQUEST } from "../constants";
+import { DECISIONS_URL, MODELS_URL, OPENROUTER_URL } from "../constants";
+import { normalizeMultiline } from "./text";
 import type { Formality } from "../types";
 
 export class OpenRouterError extends Error {}
@@ -46,18 +47,13 @@ interface ModelSummary {
   architecture?: { output_modalities?: unknown };
 }
 
-interface CompletionResult {
+export interface CompletionResult {
   content: string;
   cost: number;
 }
 
 export interface HasErrorsResult {
   hasErrors: boolean;
-  cost: number;
-}
-
-export interface OptionsResult {
-  options: string[];
   cost: number;
 }
 
@@ -125,30 +121,39 @@ export async function fetchHasGrammarErrors(request: ProofreadRequest): Promise<
   return { hasErrors: answer.noul > 0.5, cost };
 }
 
-export async function fetchCorrectionOptions(request: ProofreadRequest): Promise<OptionsResult> {
-  const result = await requestCompletion(
+export function streamCorrectionOptions(
+  request: ProofreadRequest,
+  onDelta: (full: string) => void,
+): StreamedCompletion {
+  return streamChatCompletion(
     request,
-    request.model,
     [
       { role: "system", content: buildCorrectionPrompt(request.language) },
       { role: "user", content: request.text },
     ],
     0.3,
+    onDelta,
   );
-  return { options: parseOptions(result.content), cost: result.cost };
 }
 
-export async function fetchTranslationOptions(request: TranslationRequest): Promise<OptionsResult> {
-  const result = await requestCompletion(
+export interface StreamedCompletion {
+  promise: Promise<CompletionResult>;
+  abort(): void;
+}
+
+export function streamTranslationOptions(
+  request: TranslationRequest,
+  onDelta: (full: string) => void,
+): StreamedCompletion {
+  return streamChatCompletion(
     request,
-    request.model,
     [
       { role: "system", content: buildTranslationPrompt(request) },
       { role: "user", content: request.text },
     ],
     0.8,
+    onDelta,
   );
-  return { options: parseOptions(result.content), cost: result.cost };
 }
 
 const NO_EM_DASH_RULE =
@@ -159,11 +164,10 @@ function buildCorrectionPrompt(language: string): string {
     "You are a proofreading assistant.",
     `Correct the user's text written in ${language}: fix spelling, grammar and punctuation.`,
     "Preserve meaning, tone and wording; do not add or remove information.",
-    `Give up to ${OPTIONS_PER_REQUEST} corrected versions, all equally valid, varying only in minor punctuation or phrasing choices.`,
+    "Preserve the line breaks and paragraph structure of the user's text.",
     "Keep names, numbers, URLs and code unchanged.",
     NO_EM_DASH_RULE,
-    "Reply with strict JSON only, no markdown, exactly in this shape:",
-    '{"options": ["<correction 1>", "<correction 2>", "<correction 3>"]}',
+    "Reply with the corrected text only: no preamble, no quotes around it, no explanations.",
   ].join(" ");
 }
 
@@ -177,45 +181,12 @@ function buildTranslationPrompt(request: TranslationRequest): string {
     "You are a professional translator.",
     `Translate the user's text from ${request.sourceLanguage} into ${request.targetLanguage}.`,
     `Use a ${register} register.`,
-    `Give exactly ${OPTIONS_PER_REQUEST} alternative translations: same meaning, natural and idiomatic, with varied wording and structure.`,
+    "Give exactly one translation: natural and idiomatic.",
+    "The user's text may contain several lines or paragraphs; keep the same line breaks and paragraph structure.",
     "Keep names, numbers, URLs and code unchanged.",
     NO_EM_DASH_RULE,
-    "Reply with strict JSON only, no markdown, exactly in this shape:",
-    '{"options": ["<option 1>", "<option 2>", "<option 3>"]}',
+    "Reply with the translation only: no preamble, no quotes around it, no explanations.",
   ].join(" ");
-}
-
-async function requestCompletion(
-  request: RequestBase,
-  model: string,
-  messages: ChatMessage[],
-  temperature?: number,
-): Promise<CompletionResult> {
-  const body: Record<string, unknown> = { model, messages };
-  if (temperature !== undefined) body.temperature = temperature;
-
-  const response = await fetch(OPENROUTER_URL, {
-    method: "POST",
-    headers: buildHeaders(request.apiKey),
-    body: JSON.stringify(body),
-    signal: request.signal,
-  });
-
-  if (!response.ok) {
-    throw new OpenRouterError(await describeHttpError(response));
-  }
-
-  const payload = (await response.json()) as OpenRouterResponse;
-  if (payload.error) {
-    throw new OpenRouterError(payload.error.message ?? "OpenRouter returned an error.");
-  }
-
-  const content = payload.choices?.[0]?.message?.content;
-  if (typeof content !== "string") {
-    throw new OpenRouterError("Unexpected response from OpenRouter.");
-  }
-  const cost = typeof payload.usage?.cost === "number" ? payload.usage.cost : 0;
-  return { content, cost };
 }
 
 function buildHeaders(apiKey: string): HeadersInit {
@@ -225,6 +196,109 @@ function buildHeaders(apiKey: string): HeadersInit {
     "HTTP-Referer": window.location.origin,
     "X-Title": "Latte Translator",
   };
+}
+
+interface StreamChunk {
+  error?: { message?: string };
+  choices?: Array<{ delta?: { content?: unknown } }>;
+  usage?: { cost?: unknown };
+}
+
+function streamChatCompletion(
+  request: RequestBase & { model: string },
+  messages: ChatMessage[],
+  temperature: number | undefined,
+  onDelta: (full: string) => void,
+): StreamedCompletion {
+  const controller = new AbortController();
+  const promise = readStreamedCompletion(request, controller.signal, messages, temperature, onDelta);
+  return { promise, abort: () => controller.abort() };
+}
+
+async function readStreamedCompletion(
+  request: RequestBase & { model: string },
+  signal: AbortSignal,
+  messages: ChatMessage[],
+  temperature: number | undefined,
+  onDelta: (full: string) => void,
+): Promise<CompletionResult> {
+  const body: Record<string, unknown> = {
+    model: request.model,
+    messages,
+    stream: true,
+    usage: { include: true },
+  };
+  if (temperature !== undefined) body.temperature = temperature;
+
+  const response = await fetch(OPENROUTER_URL, {
+    method: "POST",
+    headers: buildHeaders(request.apiKey),
+    body: JSON.stringify(body),
+    signal,
+  });
+
+  if (!response.ok) {
+    throw new OpenRouterError(await describeHttpError(response));
+  }
+  if (!response.body) {
+    throw new OpenRouterError("OpenRouter returned an empty stream.");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let content = "";
+  let cost = 0;
+  let stopped = false;
+
+  const handleLine = (rawLine: string): "continue" | "stop" => {
+    const line = rawLine.trim();
+    if (line.length === 0 || line.startsWith(":") || !line.startsWith("data:")) return "continue";
+    const data = line.slice(5).trim();
+    if (data === "[DONE]") return "stop";
+    let chunk: StreamChunk;
+    try {
+      chunk = JSON.parse(data) as StreamChunk;
+    } catch {
+      return "continue";
+    }
+    if (chunk.error) {
+      throw new OpenRouterError(chunk.error.message ?? "OpenRouter returned an error.");
+    }
+    const delta = chunk.choices?.[0]?.delta?.content;
+    if (typeof delta === "string" && delta.length > 0) {
+      content += delta;
+      onDelta(content);
+    }
+    if (typeof chunk.usage?.cost === "number") cost = chunk.usage.cost;
+    return "continue";
+  };
+
+  while (!stopped) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
+      if (handleLine(line) === "stop") {
+        stopped = true;
+        break;
+      }
+    }
+  }
+  if (!stopped && buffer.length > 0) handleLine(buffer);
+
+  if (content.length === 0) {
+    throw new OpenRouterError("OpenRouter returned an empty translation.");
+  }
+  return { content: cleanSingleTranslation(content), cost };
+}
+
+function cleanSingleTranslation(raw: string): string {
+  const normalized = normalizeMultiline(raw).trim();
+  const paired = normalized.match(/^“([\s\S]*)”$/) ?? normalized.match(/^"([\s\S]*)"$/);
+  return stripEmDashes(paired ? paired[1].trim() : normalized);
 }
 
 async function describeHttpError(response: Response): Promise<string> {
@@ -239,52 +313,10 @@ async function describeHttpError(response: Response): Promise<string> {
   return `OpenRouter error ${response.status} — ${detail}`;
 }
 
-function parseOptions(raw: string): string[] {
-  const jsonText = extractJson(raw);
-  if (jsonText) {
-    try {
-      const parsed = JSON.parse(jsonText) as { options?: unknown };
-      if (Array.isArray(parsed.options)) {
-        const options = parsed.options
-          .map((option) => (typeof option === "string" ? option.trim() : ""))
-          .filter((option) => option.length > 0);
-        if (options.length > 0) return options.slice(0, OPTIONS_PER_REQUEST).map(stripEmDashes);
-      }
-    } catch {
-      return parsePlainLines(raw);
-    }
-  }
-  return parsePlainLines(raw);
-}
-
 function stripEmDashes(text: string): string {
   return text
-    .replace(/\s*—\s*/g, ", ")
-    .replace(/,\s*([.,!?;:…])/g, "$1")
+    .replace(/[ \t]*—[ \t]*/g, ", ")
+    .replace(/,[ \t]*([.,!?;:…])/g, "$1")
     .replace(/,\s*$/, "")
     .trim();
-}
-
-function parsePlainLines(raw: string): string[] {
-  const lines = raw
-    .split("\n")
-    .map((line) =>
-      line
-        .replace(/^\s*(?:[-*•]|\d+[.)])?\s*/, "")
-        .replace(/^["“]|["”],?$/g, "")
-        .trim(),
-    )
-    .filter((line) => line.length > 0);
-
-  if (lines.length > 0) return lines.slice(0, OPTIONS_PER_REQUEST);
-
-  throw new OpenRouterError("Could not read the options from the model response.");
-}
-
-function extractJson(raw: string): string | null {
-  const cleaned = raw.replace(/```(?:json)?/g, "").trim();
-  const start = cleaned.indexOf("{");
-  const end = cleaned.lastIndexOf("}");
-  if (start === -1 || end <= start) return null;
-  return cleaned.slice(start, end + 1);
 }

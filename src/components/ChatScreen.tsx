@@ -1,8 +1,13 @@
 import { useRef, useState } from "react";
-import { languageName } from "../constants";
-import { fetchCorrectionOptions, fetchHasGrammarErrors, fetchTranslationOptions } from "../lib/openrouter";
+import { languageName, OPTIONS_PER_REQUEST } from "../constants";
+import {
+  fetchHasGrammarErrors,
+  streamCorrectionOptions,
+  streamTranslationOptions,
+  type CompletionResult,
+} from "../lib/openrouter";
 import { uuid } from "../lib/uuid";
-import type { ChatLog, ChatStore, Message, Pending, Settings, Side, Theme } from "../types";
+import type { ChatLog, ChatStore, Message, Pending, PendingKind, Settings, Side, Theme } from "../types";
 import ChatPane from "./ChatPane";
 import GitHubLink from "./GitHubLink";
 import ThemeToggle from "./ThemeToggle";
@@ -61,6 +66,16 @@ export default function ChatScreen({
 
   const [pending, setPending] = useState<Partial<Record<Side, Pending>>>({});
   const controllers = useRef<Partial<Record<Side, AbortController>>>({});
+  const streamsRef = useRef<
+    Partial<
+      Record<
+        Side,
+        { requestId: string; kind: PendingKind; aborts: Array<() => void>; promises: Promise<CompletionResult>[] }
+      >
+    >
+  >({});
+  const pendingRequestRef = useRef<Partial<Record<Side, string>>>({});
+  const pickedIndexRef = useRef<Partial<Record<Side, number>>>({});
   const inputBlocked = pending.left !== undefined || pending.right !== undefined;
 
   async function handleSend(side: Side, text: string) {
@@ -91,6 +106,8 @@ export default function ChatScreen({
     controllers.current[side]?.abort();
     const controller = new AbortController();
     controllers.current[side] = controller;
+    abortStreams(side);
+    abortStreams(otherSide(side));
     const requestId = uuid();
 
     setPendingFor(side, { requestId, kind: "grammar", status: "checking", sourceText: text, options: [], error: "" });
@@ -105,31 +122,89 @@ export default function ChatScreen({
       });
       onAddCost(check.cost);
       if (stopped(controller, side, requestId)) return;
-      const hasErrors = check.hasErrors;
 
-      if (!hasErrors) {
+      if (!check.hasErrors) {
         await postForTranslation(side, requestId, text);
         return;
       }
 
-      const corrections = await fetchCorrectionOptions({
-        apiKey,
-        model: settings.translationModel,
-        text,
-        language,
-        signal: controller.signal,
-      });
-      onAddCost(corrections.cost);
-      if (stopped(controller, side, requestId)) return;
+      const patchOption = (index: number, full: string) => {
+        setPending((prev) => {
+          const current = prev[side];
+          if (!current || current.requestId !== requestId) return prev;
+          if (current.pickedIndex !== undefined && current.pickedIndex !== index) return prev;
+          if (current.options[index] === full) return prev;
+          const options = current.options.map((option, i) => (i === index ? full : option));
+          return { ...prev, [side]: { ...current, options } };
+        });
+      };
+
+      const markSettled = (index: number, content: string) => {
+        setPending((prev) => {
+          const current = prev[side];
+          if (!current || current.requestId !== requestId) return prev;
+          const options = current.options.map((option, i) => (i === index ? content : option));
+          const settled = (current.settled ?? current.options.map(() => false)).map((done, i) =>
+            i === index ? true : done,
+          );
+          return { ...prev, [side]: { ...current, options, settled } };
+        });
+      };
+
+      const markReady = () => {
+        setPending((prev) => {
+          const current = prev[side];
+          if (!current || current.requestId !== requestId || current.status !== "streaming") return prev;
+          return { ...prev, [side]: { ...current, status: "corrections" } };
+        });
+      };
 
       setPendingFor(side, {
         requestId,
         kind: "grammar",
-        status: "corrections",
+        status: "streaming",
         sourceText: text,
-        options: corrections.options,
+        options: Array.from({ length: OPTIONS_PER_REQUEST }, () => ""),
+        settled: Array.from({ length: OPTIONS_PER_REQUEST }, () => false),
         error: "",
       });
+
+      const aborts: Array<() => void> = [];
+      const promises: Promise<CompletionResult>[] = [];
+      let settledCount = 0;
+
+      for (let index = 0; index < OPTIONS_PER_REQUEST; index += 1) {
+        const handle = streamCorrectionOptions(
+          { apiKey, model: settings.translationModel, text, language },
+          (full) => patchOption(index, full),
+        );
+        aborts.push(handle.abort);
+        promises.push(handle.promise);
+        void handle.promise.then(
+          (result) => {
+            if (!isCurrentRequest(side, requestId)) return;
+            onAddCost(result.cost);
+            settledCount += 1;
+            markSettled(index, result.content);
+            if (settledCount === OPTIONS_PER_REQUEST) markReady();
+          },
+          (error) => {
+            if (error instanceof DOMException && error.name === "AbortError") return;
+            if (!isCurrentRequest(side, requestId)) return;
+            if (pickedIndexRef.current[side] !== undefined && pickedIndexRef.current[side] !== index) return;
+            setPendingFor(side, {
+              requestId,
+              kind: "grammar",
+              status: "error",
+              sourceText: text,
+              options: [],
+              error: error instanceof Error ? error.message : "Something went wrong.",
+            });
+          },
+        );
+      }
+
+      streamsRef.current[side] = { requestId, kind: "grammar", aborts, promises };
     } catch (error) {
       if (stopped(controller, side, requestId)) return;
       setPendingFor(side, {
@@ -151,48 +226,93 @@ export default function ChatScreen({
     controllers.current[inputSide]?.abort();
     const controller = new AbortController();
     controllers.current[inputSide] = controller;
+    abortStreams(targetSide);
     const requestId = uuid();
 
     setPendingFor(targetSide, {
       requestId,
       kind: "translation",
-      status: "loading",
+      status: "streaming",
       sourceText: text,
-      options: [],
+      options: Array.from({ length: OPTIONS_PER_REQUEST }, () => ""),
+      settled: Array.from({ length: OPTIONS_PER_REQUEST }, () => false),
       error: "",
     });
 
-    try {
-      const result = await fetchTranslationOptions({
-        apiKey,
-        model: settings.translationModel,
-        text,
-        sourceLanguage,
-        targetLanguage,
-        formality: settings.formality,
-        signal: controller.signal,
+    const patchOption = (index: number, full: string) => {
+      setPending((prev) => {
+        const current = prev[targetSide];
+        if (!current || current.requestId !== requestId) return prev;
+        if (current.pickedIndex !== undefined && current.pickedIndex !== index) return prev;
+        if (current.options[index] === full) return prev;
+        const options = current.options.map((option, i) => (i === index ? full : option));
+        return { ...prev, [targetSide]: { ...current, options } };
       });
-      onAddCost(result.cost);
-      if (stopped(controller, targetSide, requestId)) return;
-      setPendingFor(targetSide, {
-        requestId,
-        kind: "translation",
-        status: "ready",
-        sourceText: text,
-        options: result.options,
-        error: "",
+    };
+
+    const markSettled = (index: number, content: string) => {
+      setPending((prev) => {
+        const current = prev[targetSide];
+        if (!current || current.requestId !== requestId) return prev;
+        const options = current.options.map((option, i) => (i === index ? content : option));
+        const settled = (current.settled ?? current.options.map(() => false)).map((done, i) =>
+          i === index ? true : done,
+        );
+        return { ...prev, [targetSide]: { ...current, options, settled } };
       });
-    } catch (error) {
-      if (stopped(controller, targetSide, requestId)) return;
-      setPendingFor(targetSide, {
-        requestId,
-        kind: "translation",
-        status: "error",
-        sourceText: text,
-        options: [],
-        error: error instanceof Error ? error.message : "Something went wrong.",
+    };
+
+    const markReady = () => {
+      setPending((prev) => {
+        const current = prev[targetSide];
+        if (!current || current.requestId !== requestId || current.status !== "streaming") return prev;
+        return { ...prev, [targetSide]: { ...current, status: "ready" } };
       });
+    };
+
+    const aborts: Array<() => void> = [];
+    const promises: Promise<CompletionResult>[] = [];
+    let settledCount = 0;
+
+    for (let index = 0; index < OPTIONS_PER_REQUEST; index += 1) {
+      const handle = streamTranslationOptions(
+        {
+          apiKey,
+          model: settings.translationModel,
+          text,
+          sourceLanguage,
+          targetLanguage,
+          formality: settings.formality,
+        },
+        (full) => patchOption(index, full),
+      );
+      aborts.push(handle.abort);
+      promises.push(handle.promise);
+      void handle.promise.then(
+        (result) => {
+          if (!isCurrentRequest(targetSide, requestId)) return;
+          onAddCost(result.cost);
+          settledCount += 1;
+          markSettled(index, result.content);
+          if (settledCount === OPTIONS_PER_REQUEST) markReady();
+        },
+        (error) => {
+          if (error instanceof DOMException && error.name === "AbortError") return;
+          if (!isCurrentRequest(targetSide, requestId)) return;
+          if (pickedIndexRef.current[targetSide] !== undefined && pickedIndexRef.current[targetSide] !== index) return;
+          setPendingFor(targetSide, {
+            requestId,
+            kind: "translation",
+            status: "error",
+            sourceText: text,
+            options: [],
+            error: error instanceof Error ? error.message : "Something went wrong.",
+          });
+        },
+      );
     }
+
+    streamsRef.current[targetSide] = { requestId, kind: "translation", aborts, promises };
   }
 
   async function postForTranslation(side: Side, requestId: string, text: string) {
@@ -211,25 +331,79 @@ export default function ChatScreen({
     }
   }
 
-  function handlePick(targetSide: Side, option: string) {
-    appendMessage(targetSide, option);
+  function handlePick(targetSide: Side, index: number) {
+    const state = pending[targetSide];
+    if (!state) return;
+    pickedIndexRef.current[targetSide] = index;
+    setPending((prev) => {
+      const current = prev[targetSide];
+      if (!current || current.requestId !== state.requestId) return prev;
+      return { ...prev, [targetSide]: { ...current, pickedIndex: index } };
+    });
+    const entry = streamsRef.current[targetSide];
+    if (entry && entry.requestId === state.requestId) {
+      entry.aborts.forEach((abort, i) => {
+        if (i !== index) abort();
+      });
+      void entry.promises[index].then(
+        (result) => {
+          if (!isCurrentRequest(targetSide, entry.requestId)) return;
+          appendMessage(targetSide, result.content);
+          clearPending(targetSide);
+          delete streamsRef.current[targetSide];
+        },
+        () => {
+          /* cleared or superseded mid-stream — the creation-time handler owns error UI */
+        },
+      );
+      return;
+    }
+    if (state.options[index]) {
+      appendMessage(targetSide, state.options[index]);
+    }
     clearPending(targetSide);
   }
 
-  function handlePickCorrection(side: Side, corrected: string) {
+  function handlePickCorrection(side: Side, index: number) {
     const state = pending[side];
-    if (!state) return;
-    void postForTranslation(side, state.requestId, corrected);
+    if (!state || state.kind !== "grammar") return;
+    pickedIndexRef.current[side] = index;
+    setPending((prev) => {
+      const current = prev[side];
+      if (!current || current.requestId !== state.requestId) return prev;
+      return { ...prev, [side]: { ...current, pickedIndex: index } };
+    });
+    const entry = streamsRef.current[side];
+    if (entry && entry.requestId === state.requestId) {
+      entry.aborts.forEach((abort, i) => {
+        if (i !== index) abort();
+      });
+      void entry.promises[index].then(
+        (result) => {
+          if (!isCurrentRequest(side, entry.requestId)) return;
+          delete streamsRef.current[side];
+          void postForTranslation(side, entry.requestId, result.content);
+        },
+        () => {
+          /* cleared or superseded mid-stream — the creation-time handler owns error UI */
+        },
+      );
+      return;
+    }
+    if (state.options[index]) {
+      void postForTranslation(side, state.requestId, state.options[index]);
+    }
   }
 
   function handleSendOriginal(side: Side) {
     const state = pending[side];
     if (!state) return;
+    abortStreams(side);
     void postForTranslation(side, state.requestId, state.sourceText);
   }
 
   function handleClear(side: Side) {
-    clearPending(side);
+    dismissPending(side);
     onClearSide(chatKey, side);
   }
 
@@ -244,10 +418,17 @@ export default function ChatScreen({
   }
 
   function setPendingFor(side: Side, value: Pending) {
+    pendingRequestRef.current[side] = value.requestId;
     setPending((prev) => ({ ...prev, [side]: value }));
   }
 
+  function isCurrentRequest(side: Side, requestId: string) {
+    return pendingRequestRef.current[side] === requestId;
+  }
+
   function clearPending(side: Side) {
+    delete pendingRequestRef.current[side];
+    delete pickedIndexRef.current[side];
     setPending((prev) => {
       const next = { ...prev };
       delete next[side];
@@ -256,12 +437,26 @@ export default function ChatScreen({
   }
 
   function clearPendingIfCurrent(side: Side, requestId: string) {
+    if (pendingRequestRef.current[side] !== requestId) return;
+    delete pendingRequestRef.current[side];
     setPending((prev) => {
       if (prev[side]?.requestId !== requestId) return prev;
       const next = { ...prev };
       delete next[side];
       return next;
     });
+  }
+
+  function abortStreams(side: Side) {
+    const entry = streamsRef.current[side];
+    if (!entry) return;
+    delete streamsRef.current[side];
+    entry.aborts.forEach((abort) => abort());
+  }
+
+  function dismissPending(side: Side) {
+    abortStreams(side);
+    clearPending(side);
   }
 
   return (
@@ -312,10 +507,10 @@ export default function ChatScreen({
           grammarCheck={settings.grammarCheck.left}
           onSend={(text) => handleSend("left", text)}
           onToggleGrammarCheck={(enabled) => handleToggleGrammarCheck("left", enabled)}
-          onPick={(option) => handlePick("left", option)}
-          onPickCorrection={(option) => handlePickCorrection("left", option)}
+          onPick={(index) => handlePick("left", index)}
+          onPickCorrection={(index) => handlePickCorrection("left", index)}
           onSendOriginal={() => handleSendOriginal("left")}
-          onDismiss={() => clearPending("left")}
+          onDismiss={() => dismissPending("left")}
           onRetry={() => handleRetry("left")}
           onDeleteMessage={(messageId) => onRemoveMessage(chatKey, messageId)}
           onClear={() => handleClear("left")}
@@ -329,10 +524,10 @@ export default function ChatScreen({
           grammarCheck={settings.grammarCheck.right}
           onSend={(text) => handleSend("right", text)}
           onToggleGrammarCheck={(enabled) => handleToggleGrammarCheck("right", enabled)}
-          onPick={(option) => handlePick("right", option)}
-          onPickCorrection={(option) => handlePickCorrection("right", option)}
+          onPick={(index) => handlePick("right", index)}
+          onPickCorrection={(index) => handlePickCorrection("right", index)}
           onSendOriginal={() => handleSendOriginal("right")}
-          onDismiss={() => clearPending("right")}
+          onDismiss={() => dismissPending("right")}
           onRetry={() => handleRetry("right")}
           onDeleteMessage={(messageId) => onRemoveMessage(chatKey, messageId)}
           onClear={() => handleClear("right")}

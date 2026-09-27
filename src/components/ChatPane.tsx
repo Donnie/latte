@@ -1,7 +1,10 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { normalizeMultiline } from "../lib/text";
 import type { Message, Pending, Side } from "../types";
 import ToggleSwitch from "./ToggleSwitch";
 import styles from "./ChatPane.module.css";
+
+const INPUT_MAX_HEIGHT = 132;
 
 interface ChatPaneProps {
   side: Side;
@@ -12,8 +15,8 @@ interface ChatPaneProps {
   grammarCheck: boolean;
   onSend(text: string): void;
   onToggleGrammarCheck(enabled: boolean): void;
-  onPick(option: string): void;
-  onPickCorrection(option: string): void;
+  onPick(index: number): void;
+  onPickCorrection(index: number): void;
   onSendOriginal(): void;
   onDismiss(): void;
   onRetry(): void;
@@ -41,12 +44,22 @@ export default function ChatPane({
   const [draft, setDraft] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const copyTimer = useRef<number | null>(null);
   const isBusy = pending?.status === "checking" || pending?.status === "loading";
+  const networkBusy =
+    pending?.status === "checking" || pending?.status === "loading" || pending?.status === "streaming";
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
   }, [messages.length, pending]);
+
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, INPUT_MAX_HEIGHT)}px`;
+  }, [draft]);
 
   useEffect(() => () => {
     if (copyTimer.current !== null) window.clearTimeout(copyTimer.current);
@@ -62,7 +75,17 @@ export default function ChatPane({
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const text = draft.trim();
+    submitDraft();
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+    event.preventDefault();
+    submitDraft();
+  }
+
+  function submitDraft() {
+    const text = normalizeMultiline(draft);
     if (!text || isBusy || inputBlocked) return;
     onSend(text);
     setDraft("");
@@ -77,7 +100,10 @@ export default function ChatPane({
   return (
     <section className={styles.pane} aria-label={`${language} conversation`}>
       <header className={styles.header}>
-        <h2>{language}</h2>
+        <div className={styles.titleGroup}>
+          <h2>{language}</h2>
+          {networkBusy && <span className={styles.spinner} role="status" aria-label="Network activity" />}
+        </div>
         <div className={styles.headerActions}>
           <ToggleSwitch label="Grammar" checked={grammarCheck} onChange={onToggleGrammarCheck} />
           <button
@@ -140,7 +166,8 @@ export default function ChatPane({
           </div>
         )}
 
-        {pending?.status === "corrections" && (
+        {pending?.kind === "grammar" &&
+          (pending?.status === "corrections" || pending?.status === "streaming") && (
           <div className={styles.correction}>
             <div className={styles.boxHeader}>
               <span className={styles.boxTitle}>Grammar suggestions</span>
@@ -148,37 +175,54 @@ export default function ChatPane({
                 ✕
               </button>
             </div>
-            {pending.options.map((option, index) => (
-              <button
-                key={`${index}-${option}`}
-                type="button"
-                className={styles.correctionOption}
-                onClick={() => onPickCorrection(option)}
-              >
-                {option}
+            {(pending.pickedIndex !== undefined ? [pending.pickedIndex] : pending.options.map((_, index) => index)).map(
+              (index) => {
+                const settled = pending.settled?.[index] ?? true;
+                return (
+                  <button
+                    key={index}
+                    type="button"
+                    className={
+                      settled ? styles.correctionOption : `${styles.correctionOption} ${styles.optionStreaming}`
+                    }
+                    onClick={() => onPickCorrection(index)}
+                  >
+                    {pending.options[index]}
+                  </button>
+                );
+              },
+            )}
+            {pending.pickedIndex === undefined && (
+              <button type="button" className={styles.boxLink} onClick={onSendOriginal}>
+                Send as is
               </button>
-            ))}
-            <button type="button" className={styles.boxLink} onClick={onSendOriginal}>
-              Send as is
-            </button>
+            )}
           </div>
         )}
 
-        {pending?.status === "ready" && (
+        {pending?.kind === "translation" &&
+          (pending?.status === "streaming" || pending?.status === "ready") && (
           <div className={styles.options}>
-            {pending.options.map((option, index) => (
-              <button
-                key={`${index}-${option}`}
-                type="button"
-                className={styles.option}
-                onClick={() => onPick(option)}
-              >
-                {option}
+            {(pending.pickedIndex !== undefined ? [pending.pickedIndex] : pending.options.map((_, index) => index)).map(
+              (index) => {
+                const settled = pending.settled?.[index] ?? true;
+                return (
+                  <button
+                    key={index}
+                    type="button"
+                    className={settled ? styles.option : `${styles.option} ${styles.optionStreaming}`}
+                    onClick={() => onPick(index)}
+                  >
+                    {pending.options[index]}
+                  </button>
+                );
+              },
+            )}
+            {pending.pickedIndex === undefined && (
+              <button type="button" className={styles.boxLink} onClick={handleDismiss}>
+                None of these
               </button>
-            ))}
-            <button type="button" className={styles.boxLink} onClick={handleDismiss}>
-              None of these
-            </button>
+            )}
           </div>
         )}
 
@@ -200,14 +244,17 @@ export default function ChatPane({
       </div>
 
       <form className={styles.form} onSubmit={handleSubmit}>
-        <input
+        <textarea
+          ref={inputRef}
+          rows={1}
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={handleKeyDown}
           placeholder={`Write in ${language}…`}
           disabled={isBusy || inputBlocked}
           aria-label={`Write in ${language}`}
         />
-        <button type="submit" disabled={isBusy || inputBlocked || draft.trim() === ""}>
+        <button type="submit" disabled={isBusy || inputBlocked || normalizeMultiline(draft) === ""}>
           Send
         </button>
       </form>
