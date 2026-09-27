@@ -1,13 +1,10 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { normalizeMultiline } from "../lib/text";
 import type { Message, Pending, Side } from "../types";
 import ToggleSwitch from "./ToggleSwitch";
 import styles from "./ChatPane.module.css";
 
 const INPUT_MAX_HEIGHT = 132;
-
-function normalizeDraft(text: string): string {
-  return text.replace(/\r\n?/g, "\n").trim();
-}
 
 interface ChatPaneProps {
   side: Side;
@@ -86,7 +83,7 @@ export default function ChatPane({
   }
 
   function submitDraft() {
-    const text = normalizeDraft(draft);
+    const text = normalizeMultiline(draft);
     if (!text || isBusy || inputBlocked) return;
     onSend(text);
     setDraft("");
@@ -234,7 +231,7 @@ export default function ChatPane({
           disabled={isBusy || inputBlocked}
           aria-label={`Write in ${language}`}
         />
-        <button type="submit" disabled={isBusy || inputBlocked || normalizeDraft(draft) === ""}>
+        <button type="submit" disabled={isBusy || inputBlocked || normalizeMultiline(draft) === ""}>
           Send
         </button>
       </form>

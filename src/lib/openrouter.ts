@@ -1,4 +1,5 @@
 import { DECISIONS_URL, MODELS_URL, OPENROUTER_URL, OPTIONS_PER_REQUEST } from "../constants";
+import { normalizeMultiline } from "./text";
 import type { Formality } from "../types";
 
 export class OpenRouterError extends Error {}
@@ -258,7 +259,7 @@ function parseOptionsJson(jsonText: string): string[] | null {
       const parsed = JSON.parse(candidate) as { options?: unknown };
       if (!Array.isArray(parsed.options)) continue;
       const options = parsed.options
-        .map((option) => (typeof option === "string" ? cleanOption(option) : ""))
+        .map((option) => (typeof option === "string" ? normalizeMultiline(option) : ""))
         .filter((option) => option.length > 0);
       if (options.length > 0) return options.slice(0, OPTIONS_PER_REQUEST).map(stripEmDashes);
     } catch {
@@ -266,10 +267,6 @@ function parseOptionsJson(jsonText: string): string[] | null {
     }
   }
   return null;
-}
-
-function cleanOption(text: string): string {
-  return text.replace(/\r\n?/g, "\n").trim();
 }
 
 function escapeRawNewlines(json: string): string {
@@ -305,8 +302,7 @@ function stripEmDashes(text: string): string {
 }
 
 function parsePlainLines(raw: string): string[] {
-  const lines = raw
-    .replace(/\r\n?/g, "\n")
+  const lines = normalizeMultiline(raw)
     .split("\n")
     .map((line) =>
       line
