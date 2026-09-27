@@ -166,7 +166,8 @@ export default function ChatPane({
           </div>
         )}
 
-        {(pending?.status === "corrections" || (pending?.kind === "grammar" && pending?.status === "streaming")) && (
+        {pending?.kind === "grammar" &&
+          (pending?.status === "corrections" || pending?.status === "streaming") && (
           <div className={styles.correction}>
             <div className={styles.boxHeader}>
               <span className={styles.boxTitle}>Grammar suggestions</span>
@@ -199,7 +200,8 @@ export default function ChatPane({
           </div>
         )}
 
-        {(pending?.status === "streaming" || pending?.status === "ready") && (
+        {pending?.kind === "translation" &&
+          (pending?.status === "streaming" || pending?.status === "ready") && (
           <div className={styles.options}>
             {(pending.pickedIndex !== undefined ? [pending.pickedIndex] : pending.options.map((_, index) => index)).map(
               (index) => {
