@@ -6,7 +6,6 @@ export const DEFAULT_SPEECH_MODEL = "x-ai/grok-voice-tts-1.0";
 export const DEFAULT_SPEECH_VOICE = "eve";
 export const LEGACY_GRAMMAR_MODEL = "typesafe/jev-router";
 export const DEFAULT_MODEL_SUGGESTIONS = [DEFAULT_TRANSLATION_MODEL];
-export const DEFAULT_SPEECH_MODEL_SUGGESTIONS = [DEFAULT_SPEECH_MODEL];
 export const DEFAULT_DECISION_MODEL_SUGGESTIONS = [
   DEFAULT_GRAMMAR_MODEL,
   "typesafe/jev-1.13",

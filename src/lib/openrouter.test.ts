@@ -1,6 +1,6 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { OpenRouterError, fetchGenerationCost, streamCorrectionOptions, streamTranslationOptions, synthesizeSpeech } from "./openrouter";
+import { OpenRouterError, fetchGenerationCost, fetchSpeechCatalog, streamCorrectionOptions, streamTranslationOptions, synthesizeSpeech } from "./openrouter";
 
 function sseResponse(events: string[], status = 200): Response {
   const stream = new ReadableStream<Uint8Array>({
@@ -292,5 +292,38 @@ describe("fetchGenerationCost", () => {
 
     await expect(pending).resolves.toBe(0.00003);
     expect(calls).toBe(2);
+  });
+});
+
+describe("fetchSpeechCatalog", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("keeps multilingual voices and sorts the models by name", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        expect(url).toContain("output_modalities=speech");
+        return new Response(
+          JSON.stringify({
+            data: [
+              { id: "fish-audio/s1", name: "Fish", description: "A multilingual text-to-speech model.", supported_voices: null },
+              { id: "canopylabs/orpheus", name: "Orpheus", description: "An English text-to-speech model.", supported_voices: ["tara", "leah"] },
+              { id: "deepgram/aura-2", name: "Aura", description: "A multilingual catalog across multiple languages.", supported_voices: ["aura-2-thalia-en", "aura-2-agathe-fr"] },
+              { id: "x-ai/grok-voice-tts-1.0", name: "Grok Voice", description: "Speech across 20+ languages with automatic language detection.", supported_voices: ["eve", "ara", ""] },
+              { id: "empty/voices", name: "Empty", supported_voices: [] },
+              { id: "google/gemini-tts", name: "Gemini TTS", supported_voices: ["Kore", "Puck"] },
+            ],
+          }),
+          { status: 200 },
+        );
+      }),
+    );
+
+    await expect(fetchSpeechCatalog()).resolves.toEqual([
+      { id: "google/gemini-tts", name: "Gemini TTS", voices: ["Kore", "Puck"] },
+      { id: "x-ai/grok-voice-tts-1.0", name: "Grok Voice", voices: ["eve", "ara"] },
+    ]);
   });
 });

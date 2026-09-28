@@ -4,15 +4,26 @@ import {
   DEFAULT_GRAMMAR_MODEL,
   DEFAULT_MODEL_SUGGESTIONS,
   DEFAULT_SPEECH_MODEL,
-  DEFAULT_SPEECH_MODEL_SUGGESTIONS,
   DEFAULT_SPEECH_VOICE,
   DEFAULT_TRANSLATION_MODEL,
   LANGUAGES,
 } from "../constants";
-import { fetchAvailableModels } from "../lib/openrouter";
+import { fetchAvailableModels, fetchSpeechCatalog, type SpeechModelOption } from "../lib/openrouter";
 import type { Formality, Settings } from "../types";
 import ToggleSwitch from "./ToggleSwitch";
 import styles from "./SetupScreen.module.css";
+
+function chooseSpeech(catalog: SpeechModelOption[], modelId: string, voiceId: string) {
+  const model =
+    catalog.find((entry) => entry.id === modelId) ??
+    catalog.find((entry) => entry.id === DEFAULT_SPEECH_MODEL) ??
+    catalog[0];
+  if (!model) return { modelId, voiceId };
+  return {
+    modelId: model.id,
+    voiceId: model.voices.includes(voiceId) ? voiceId : (model.voices[0] ?? ""),
+  };
+}
 
 interface SetupScreenProps {
   initial: Settings | null;
@@ -32,7 +43,13 @@ export default function SetupScreen({ initial, canCancel, onSave, onCancel }: Se
   const [speechVoice, setSpeechVoice] = useState(initial?.speechVoice ?? DEFAULT_SPEECH_VOICE);
   const [textModels, setTextModels] = useState<string[]>(DEFAULT_MODEL_SUGGESTIONS);
   const [decisionModels, setDecisionModels] = useState<string[]>(DEFAULT_DECISION_MODEL_SUGGESTIONS);
-  const [speechModels, setSpeechModels] = useState<string[]>(DEFAULT_SPEECH_MODEL_SUGGESTIONS);
+  const [speechCatalog, setSpeechCatalog] = useState<SpeechModelOption[]>(() => [
+    {
+      id: initial?.speechModel ?? DEFAULT_SPEECH_MODEL,
+      name: initial?.speechModel ?? DEFAULT_SPEECH_MODEL,
+      voices: [initial?.speechVoice ?? DEFAULT_SPEECH_VOICE],
+    },
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -64,12 +81,22 @@ export default function SetupScreen({ initial, canCancel, onSave, onCancel }: Se
 
   useEffect(() => {
     let cancelled = false;
-    fetchAvailableModels("speech")
-      .then((ids) => {
-        if (!cancelled) setSpeechModels(ids);
+    fetchSpeechCatalog()
+      .then((catalog) => {
+        if (cancelled) return;
+        const next = chooseSpeech(catalog, speechModel, speechVoice);
+        setSpeechCatalog(catalog);
+        setSpeechModel(next.modelId);
+        setSpeechVoice(next.voiceId);
       })
       .catch(() => {
-        if (!cancelled) setSpeechModels(DEFAULT_SPEECH_MODEL_SUGGESTIONS);
+        if (!cancelled) {
+          setSpeechCatalog([
+            { id: DEFAULT_SPEECH_MODEL, name: DEFAULT_SPEECH_MODEL, voices: [DEFAULT_SPEECH_VOICE] },
+          ]);
+          setSpeechModel(DEFAULT_SPEECH_MODEL);
+          setSpeechVoice(DEFAULT_SPEECH_VOICE);
+        }
       });
     return () => {
       cancelled = true;
@@ -80,6 +107,7 @@ export default function SetupScreen({ initial, canCancel, onSave, onCancel }: Se
   const trimmedGrammarModel = grammarModel.trim();
   const trimmedSpeechModel = speechModel.trim();
   const trimmedSpeechVoice = speechVoice.trim();
+  const voiceOptions = speechCatalog.find((model) => model.id === speechModel)?.voices ?? [];
   const sameLanguage = source === target;
   const missingModel =
     trimmedTranslationModel === "" || trimmedGrammarModel === "" || trimmedSpeechModel === "" || trimmedSpeechVoice === "";
@@ -198,36 +226,35 @@ export default function SetupScreen({ initial, canCancel, onSave, onCancel }: Se
           ))}
         </datalist>
         <p className={styles.modelsHint}>
-          Speech uses an OpenRouter text-to-speech model. The voice name has to be one that model offers.
+          Speech models and voices are the multilingual ones OpenRouter offers. A voice here can speak both languages.
         </p>
         <label className={styles.field}>
           <span>Speech model</span>
-          <input
-            list="openrouter-speech-models"
+          <select
             value={speechModel}
-            onChange={(event) => setSpeechModel(event.target.value)}
-            placeholder={DEFAULT_SPEECH_MODEL}
-            spellCheck={false}
-            autoCapitalize="off"
-            autoCorrect="off"
-          />
+            onChange={(event) => {
+              const next = chooseSpeech(speechCatalog, event.target.value, speechVoice);
+              setSpeechModel(next.modelId);
+              setSpeechVoice(next.voiceId);
+            }}
+          >
+            {speechCatalog.map((model) => (
+              <option key={model.id} value={model.id}>
+                {model.name}
+              </option>
+            ))}
+          </select>
         </label>
         <label className={styles.field}>
           <span>Voice</span>
-          <input
-            value={speechVoice}
-            onChange={(event) => setSpeechVoice(event.target.value)}
-            placeholder={DEFAULT_SPEECH_VOICE}
-            spellCheck={false}
-            autoCapitalize="off"
-            autoCorrect="off"
-          />
+          <select value={speechVoice} onChange={(event) => setSpeechVoice(event.target.value)}>
+            {voiceOptions.map((voice) => (
+              <option key={voice} value={voice}>
+                {voice}
+              </option>
+            ))}
+          </select>
         </label>
-        <datalist id="openrouter-speech-models">
-          {speechModels.map((id) => (
-            <option key={id} value={id} />
-          ))}
-        </datalist>
 
         <div className={styles.actions}>
           {canCancel && (

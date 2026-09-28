@@ -44,7 +44,16 @@ interface DecisionsResponse {
 
 interface ModelSummary {
   id?: unknown;
+  name?: unknown;
+  description?: unknown;
   architecture?: { output_modalities?: unknown };
+  supported_voices?: unknown;
+}
+
+export interface SpeechModelOption {
+  id: string;
+  name: string;
+  voices: string[];
 }
 
 export interface CompletionResult {
@@ -81,6 +90,47 @@ export async function fetchAvailableModels(kind: ModelKind = "text"): Promise<st
     throw new OpenRouterError("No models available.");
   }
   return ids;
+}
+
+export async function fetchSpeechCatalog(): Promise<SpeechModelOption[]> {
+  const response = await fetch(`${MODELS_URL}?output_modalities=speech`);
+  if (!response.ok) {
+    throw new OpenRouterError(`Could not load models — ${response.statusText || "request failed"}`);
+  }
+  const payload = (await response.json()) as { data?: ModelSummary[] };
+  if (!Array.isArray(payload.data)) {
+    throw new OpenRouterError("Unexpected response from OpenRouter.");
+  }
+  const options = payload.data
+    .filter((model) => !isEnglishOnlySpeech(typeof model.description === "string" ? model.description : ""))
+    .map((model) => {
+      const id = typeof model.id === "string" ? model.id : "";
+      const name = typeof model.name === "string" && model.name.trim().length > 0 ? model.name.trim() : id;
+      const voices = Array.isArray(model.supported_voices)
+        ? model.supported_voices.filter((voice): voice is string => typeof voice === "string" && voice.length > 0 && !isLanguageLockedVoice(voice))
+        : [];
+      return { id, name, voices };
+    })
+    .filter((model) => model.id.length > 0 && model.voices.length > 0)
+    .sort((a, b) => a.name.localeCompare(b.name));
+  if (options.length === 0) {
+    throw new OpenRouterError("No speech models available.");
+  }
+  return options;
+}
+
+function isEnglishOnlySpeech(description: string): boolean {
+  return /\benglish\b/i.test(description) && !/multilingual|\blanguages\b|language detection/i.test(description);
+}
+
+function isLanguageLockedVoice(voice: string): boolean {
+  return (
+    /^[a-z]{2}-[A-Z]{2}-/.test(voice) ||
+    /-(?:en|fr|es|de|ja|pt|it|nl|hi)$/i.test(voice) ||
+    /^(?:af|am|bf|bm|ef|em|ff|hf|hm|if|im|jf|jm|pf|pm|zf|zm)_/.test(voice) ||
+    /^(?:en|gb|fr|de|es|pt|it|nl|ja|zh|ko|hi|pl|ru|ar)_/.test(voice) ||
+    /^(?:English|Chinese|Japanese|Korean|French|German|Spanish|Portuguese|Italian|Dutch|Polish|Russian|Turkish|Arabic|Hindi)_/.test(voice)
+  );
 }
 
 function outputsModality(model: ModelSummary, modality: "decisions" | "speech"): boolean {
