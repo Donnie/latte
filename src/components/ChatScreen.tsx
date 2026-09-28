@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { languageName, OPTIONS_PER_REQUEST } from "../constants";
+import { soleOption } from "../lib/text";
 import {
   fetchHasGrammarErrors,
   streamCorrectionOptions,
@@ -171,6 +172,7 @@ export default function ChatScreen({
 
       const aborts: Array<() => void> = [];
       const promises: Promise<CompletionResult>[] = [];
+      const finals = Array.from({ length: OPTIONS_PER_REQUEST }, () => "");
       let settledCount = 0;
 
       for (let index = 0; index < OPTIONS_PER_REQUEST; index += 1) {
@@ -184,9 +186,17 @@ export default function ChatScreen({
           (result) => {
             if (!isCurrentRequest(side, requestId)) return;
             onAddCost(result.cost);
+            finals[index] = result.content;
             settledCount += 1;
             markSettled(index, result.content);
-            if (settledCount === OPTIONS_PER_REQUEST) markReady();
+            if (settledCount !== OPTIONS_PER_REQUEST) return;
+            const only = soleOption(finals);
+            if (only !== undefined && pickedIndexRef.current[side] === undefined) {
+              delete streamsRef.current[side];
+              void postForTranslation(side, requestId, only);
+              return;
+            }
+            markReady();
           },
           (error) => {
             if (error instanceof DOMException && error.name === "AbortError") return;
@@ -272,6 +282,7 @@ export default function ChatScreen({
 
     const aborts: Array<() => void> = [];
     const promises: Promise<CompletionResult>[] = [];
+    const finals = Array.from({ length: OPTIONS_PER_REQUEST }, () => "");
     let settledCount = 0;
 
     for (let index = 0; index < OPTIONS_PER_REQUEST; index += 1) {
@@ -292,9 +303,18 @@ export default function ChatScreen({
         (result) => {
           if (!isCurrentRequest(targetSide, requestId)) return;
           onAddCost(result.cost);
+          finals[index] = result.content;
           settledCount += 1;
           markSettled(index, result.content);
-          if (settledCount === OPTIONS_PER_REQUEST) markReady();
+          if (settledCount !== OPTIONS_PER_REQUEST) return;
+          const only = soleOption(finals);
+          if (only !== undefined && pickedIndexRef.current[targetSide] === undefined) {
+            delete streamsRef.current[targetSide];
+            appendMessage(targetSide, only);
+            clearPending(targetSide);
+            return;
+          }
+          markReady();
         },
         (error) => {
           if (error instanceof DOMException && error.name === "AbortError") return;

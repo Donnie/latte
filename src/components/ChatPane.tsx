@@ -1,10 +1,16 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { normalizeMultiline } from "../lib/text";
+import { normalizeMultiline, uniqueOptionIndexes } from "../lib/text";
 import type { Message, Pending, Side } from "../types";
 import ToggleSwitch from "./ToggleSwitch";
 import styles from "./ChatPane.module.css";
 
 const INPUT_MAX_HEIGHT = 132;
+
+function optionIndexes(pending: Pending): number[] {
+  if (pending.pickedIndex !== undefined) return [pending.pickedIndex];
+  if (pending.status === "streaming") return pending.options.map((_, index) => index);
+  return uniqueOptionIndexes(pending.options);
+}
 
 interface ChatPaneProps {
   side: Side;
@@ -175,23 +181,21 @@ export default function ChatPane({
                 ✕
               </button>
             </div>
-            {(pending.pickedIndex !== undefined ? [pending.pickedIndex] : pending.options.map((_, index) => index)).map(
-              (index) => {
-                const settled = pending.settled?.[index] ?? true;
-                return (
-                  <button
-                    key={index}
-                    type="button"
-                    className={
-                      settled ? styles.correctionOption : `${styles.correctionOption} ${styles.optionStreaming}`
-                    }
-                    onClick={() => onPickCorrection(index)}
-                  >
-                    {pending.options[index]}
-                  </button>
-                );
-              },
-            )}
+            {optionIndexes(pending).map((index) => {
+              const settled = pending.settled?.[index] ?? true;
+              return (
+                <button
+                  key={index}
+                  type="button"
+                  className={
+                    settled ? styles.correctionOption : `${styles.correctionOption} ${styles.optionStreaming}`
+                  }
+                  onClick={() => onPickCorrection(index)}
+                >
+                  {pending.options[index]}
+                </button>
+              );
+            })}
             {pending.pickedIndex === undefined && (
               <button type="button" className={styles.boxLink} onClick={onSendOriginal}>
                 Send as is
@@ -203,21 +207,19 @@ export default function ChatPane({
         {pending?.kind === "translation" &&
           (pending?.status === "streaming" || pending?.status === "ready") && (
           <div className={styles.options}>
-            {(pending.pickedIndex !== undefined ? [pending.pickedIndex] : pending.options.map((_, index) => index)).map(
-              (index) => {
-                const settled = pending.settled?.[index] ?? true;
-                return (
-                  <button
-                    key={index}
-                    type="button"
-                    className={settled ? styles.option : `${styles.option} ${styles.optionStreaming}`}
-                    onClick={() => onPick(index)}
-                  >
-                    {pending.options[index]}
-                  </button>
-                );
-              },
-            )}
+            {optionIndexes(pending).map((index) => {
+              const settled = pending.settled?.[index] ?? true;
+              return (
+                <button
+                  key={index}
+                  type="button"
+                  className={settled ? styles.option : `${styles.option} ${styles.optionStreaming}`}
+                  onClick={() => onPick(index)}
+                >
+                  {pending.options[index]}
+                </button>
+              );
+            })}
             {pending.pickedIndex === undefined && (
               <button type="button" className={styles.boxLink} onClick={handleDismiss}>
                 None of these
