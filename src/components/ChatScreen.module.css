@@ -1,16 +1,30 @@
 .screen {
   display: flex;
   flex-direction: column;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   height: 100%;
 }
 
 .header {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  gap: 16px;
+  column-gap: 16px;
+  min-width: 0;
+  max-width: 100%;
   padding: 10px 16px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
+}
+
+.brandCluster {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-self: start;
+  flex: none;
 }
 
 .brand {
@@ -22,10 +36,11 @@
 .pairInfo {
   display: flex;
   align-items: center;
-  gap: 10px;
-  flex: 1;
   justify-content: center;
+  justify-self: center;
+  gap: 10px;
   min-width: 0;
+  max-width: 100%;
 }
 
 .pair {
@@ -48,7 +63,18 @@
 .actions {
   display: flex;
   align-items: center;
+  justify-self: end;
   gap: 8px;
+  min-width: 0;
+}
+
+.formality,
+.tools,
+.session {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 .costChip {
@@ -64,12 +90,23 @@
 }
 
 .iconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
   background: none;
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 6px 10px;
   color: var(--muted);
   white-space: nowrap;
+}
+
+.buttonLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .iconButton:hover {
@@ -98,15 +135,74 @@
     grid-template-columns: 1fr;
     grid-auto-rows: var(--pane-height);
   }
+}
 
+@media (max-width: 1100px) {
   .header {
-    flex-wrap: wrap;
-    gap: 8px;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas:
+      "brand tools"
+      "pair pair"
+      "formality session";
+    align-items: center;
+    column-gap: 10px;
+    row-gap: 8px;
+    padding:
+      8px
+      max(12px, env(safe-area-inset-right))
+      8px
+      max(12px, env(safe-area-inset-left));
+  }
+
+  .actions {
+    display: contents;
+  }
+
+  .brandCluster {
+    grid-area: brand;
+    min-width: 0;
+  }
+
+  .tools {
+    grid-area: tools;
+    justify-self: end;
+    flex: none;
   }
 
   .pairInfo {
-    order: 3;
-    flex-basis: 100%;
+    grid-area: pair;
+    justify-self: stretch;
     justify-content: flex-start;
+  }
+
+  .formality {
+    grid-area: formality;
+    flex: none;
+    min-width: min-content;
+  }
+
+  .session {
+    grid-area: session;
+    justify-content: flex-end;
+    min-width: 0;
+  }
+
+  .session .iconButton {
+    padding: 6px 8px;
+    font-size: 13px;
+  }
+}
+
+@media (min-width: 540px) and (max-width: 1100px) {
+  .header {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "brand pair tools"
+      "formality session session";
+  }
+
+  .pairInfo {
+    justify-content: center;
   }
 }

@@ -462,39 +462,49 @@ export default function ChatScreen({
   return (
     <div className={styles.screen}>
       <header className={styles.header}>
-        <span className={styles.brand}>☕ Latte</span>
-        <GitHubLink />
+        <div className={styles.brandCluster}>
+          <span className={styles.brand}>☕ Latte</span>
+          <GitHubLink />
+        </div>
         <div className={styles.pairInfo}>
           <span className={styles.pair}>
             {languageName(settings.source)} ⇄ {languageName(settings.target)}
           </span>
         </div>
         <div className={styles.actions}>
-          <ToggleSwitch
-            label="Formal"
-            checked={settings.formality === "formal"}
-            onChange={handleToggleFormality}
-          />
-          <ThemeToggle theme={theme} onToggle={onToggleTheme} />
-          <span className={styles.costChip} title="Total OpenRouter spend on this device">
-            Σ {formatCost(totalCost)}
-          </span>
-          <button
-            type="button"
-            className={styles.iconButton}
-            onClick={onOpenSettings}
-            aria-label="Translation settings"
-          >
-            ⚙︎ Settings
-          </button>
-          <button
-            type="button"
-            className={styles.iconButton}
-            onClick={onLogout}
-            aria-label="Log out and clear all stored data"
-          >
-            ⎋ Log out
-          </button>
+          <div className={styles.formality}>
+            <ToggleSwitch
+              label="Formal"
+              checked={settings.formality === "formal"}
+              onChange={handleToggleFormality}
+            />
+          </div>
+          <div className={styles.tools}>
+            <ThemeToggle theme={theme} onToggle={onToggleTheme} />
+            <span className={styles.costChip} title="Total OpenRouter spend on this device">
+              Σ {formatCost(totalCost)}
+            </span>
+          </div>
+          <div className={styles.session}>
+            <button
+              type="button"
+              className={styles.iconButton}
+              onClick={onOpenSettings}
+              aria-label="Translation settings"
+            >
+              <span className={styles.buttonIcon} aria-hidden="true">⚙︎</span>
+              <span className={styles.buttonLabel}>Settings</span>
+            </button>
+            <button
+              type="button"
+              className={styles.iconButton}
+              onClick={onLogout}
+              aria-label="Log out and clear all stored data"
+            >
+              <span className={styles.buttonIcon} aria-hidden="true">⎋</span>
+              <span className={styles.buttonLabel}>Log out</span>
+            </button>
+          </div>
         </div>
       </header>
       <main className={styles.panes}>
