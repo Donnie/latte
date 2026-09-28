@@ -39,6 +39,10 @@ function otherSide(side: Side): Side {
   return side === "left" ? "right" : "left";
 }
 
+function optionCountFor(showOptions: boolean): number {
+  return showOptions ? OPTIONS_PER_REQUEST : 1;
+}
+
 function formatCost(cost: number): string {
   if (cost <= 0) return "$0.00";
   if (cost < 0.01) return `$${cost.toFixed(6)}`;
@@ -103,6 +107,7 @@ export default function ChatScreen({
 
   async function grammarCheck(side: Side, text: string) {
     const language = languageName(side === "left" ? settings.source : settings.target);
+    const optionCount = optionCountFor(settings.showOptions);
 
     controllers.current[side]?.abort();
     const controller = new AbortController();
@@ -165,17 +170,17 @@ export default function ChatScreen({
         kind: "grammar",
         status: "streaming",
         sourceText: text,
-        options: Array.from({ length: OPTIONS_PER_REQUEST }, () => ""),
-        settled: Array.from({ length: OPTIONS_PER_REQUEST }, () => false),
+        options: Array.from({ length: optionCount }, () => ""),
+        settled: Array.from({ length: optionCount }, () => false),
         error: "",
       });
 
       const aborts: Array<() => void> = [];
       const promises: Promise<CompletionResult>[] = [];
-      const finals = Array.from({ length: OPTIONS_PER_REQUEST }, () => "");
+      const finals = Array.from({ length: optionCount }, () => "");
       let settledCount = 0;
 
-      for (let index = 0; index < OPTIONS_PER_REQUEST; index += 1) {
+      for (let index = 0; index < optionCount; index += 1) {
         const handle = streamCorrectionOptions(
           { apiKey, model: settings.translationModel, text, language },
           (full) => patchOption(index, full),
@@ -189,7 +194,7 @@ export default function ChatScreen({
             finals[index] = result.content;
             settledCount += 1;
             markSettled(index, result.content);
-            if (settledCount !== OPTIONS_PER_REQUEST) return;
+            if (settledCount !== optionCount) return;
             const only = soleOption(finals);
             if (only !== undefined && pickedIndexRef.current[side] === undefined) {
               delete streamsRef.current[side];
@@ -232,6 +237,7 @@ export default function ChatScreen({
     const targetSide = otherSide(inputSide);
     const sourceLanguage = languageName(inputSide === "left" ? settings.source : settings.target);
     const targetLanguage = languageName(inputSide === "left" ? settings.target : settings.source);
+    const optionCount = optionCountFor(settings.showOptions);
 
     controllers.current[inputSide]?.abort();
     const controller = new AbortController();
@@ -244,8 +250,8 @@ export default function ChatScreen({
       kind: "translation",
       status: "streaming",
       sourceText: text,
-      options: Array.from({ length: OPTIONS_PER_REQUEST }, () => ""),
-      settled: Array.from({ length: OPTIONS_PER_REQUEST }, () => false),
+      options: Array.from({ length: optionCount }, () => ""),
+      settled: Array.from({ length: optionCount }, () => false),
       error: "",
     });
 
@@ -282,10 +288,10 @@ export default function ChatScreen({
 
     const aborts: Array<() => void> = [];
     const promises: Promise<CompletionResult>[] = [];
-    const finals = Array.from({ length: OPTIONS_PER_REQUEST }, () => "");
+    const finals = Array.from({ length: optionCount }, () => "");
     let settledCount = 0;
 
-    for (let index = 0; index < OPTIONS_PER_REQUEST; index += 1) {
+    for (let index = 0; index < optionCount; index += 1) {
       const handle = streamTranslationOptions(
         {
           apiKey,
@@ -306,7 +312,7 @@ export default function ChatScreen({
           finals[index] = result.content;
           settledCount += 1;
           markSettled(index, result.content);
-          if (settledCount !== OPTIONS_PER_REQUEST) return;
+          if (settledCount !== optionCount) return;
           const only = soleOption(finals);
           if (only !== undefined && pickedIndexRef.current[targetSide] === undefined) {
             delete streamsRef.current[targetSide];

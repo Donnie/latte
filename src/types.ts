@@ -20,6 +20,7 @@ export interface Settings {
   target: string;
   formality: Formality;
   grammarCheck: GrammarCheckSetting;
+  showOptions: boolean;
   translationModel: string;
   grammarModel: string;
 }

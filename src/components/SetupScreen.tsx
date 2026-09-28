@@ -8,6 +8,7 @@ import {
 } from "../constants";
 import { fetchAvailableModels } from "../lib/openrouter";
 import type { Formality, Settings } from "../types";
+import ToggleSwitch from "./ToggleSwitch";
 import styles from "./SetupScreen.module.css";
 
 interface SetupScreenProps {
@@ -21,6 +22,7 @@ export default function SetupScreen({ initial, canCancel, onSave, onCancel }: Se
   const [source, setSource] = useState(initial?.source ?? "en");
   const [target, setTarget] = useState(initial?.target ?? "de");
   const [formality, setFormality] = useState<Formality>(initial?.formality ?? "informal");
+  const [showOptions, setShowOptions] = useState(initial?.showOptions !== false);
   const [translationModel, setTranslationModel] = useState(initial?.translationModel ?? DEFAULT_TRANSLATION_MODEL);
   const [grammarModel, setGrammarModel] = useState(initial?.grammarModel ?? DEFAULT_GRAMMAR_MODEL);
   const [textModels, setTextModels] = useState<string[]>(DEFAULT_MODEL_SUGGESTIONS);
@@ -124,6 +126,16 @@ export default function SetupScreen({ initial, canCancel, onSave, onCancel }: Se
           </label>
         </div>
 
+        <div className={styles.optionToggle}>
+          <div className={styles.optionCopy}>
+            <span className={styles.formalityLabel}>Show options</span>
+            <p className={styles.modelsHint}>
+              When off, one proofreading or translation result is streamed and used automatically.
+            </p>
+          </div>
+          <ToggleSwitch label={showOptions ? "On" : "Off"} checked={showOptions} onChange={setShowOptions} />
+        </div>
+
         <p className={styles.modelsHint}>
           Translation runs on any OpenRouter text model. Grammar check runs on a typed decision model that answers with
           probabilities instead of text.
@@ -179,6 +191,7 @@ export default function SetupScreen({ initial, canCancel, onSave, onCancel }: Se
                 target,
                 formality,
                 grammarCheck: initial?.grammarCheck ?? { left: true, right: true },
+                showOptions,
                 translationModel: trimmedTranslationModel,
                 grammarModel: trimmedGrammarModel,
               })

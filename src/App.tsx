@@ -134,6 +134,7 @@ function normalizeSettings(value: unknown): Settings | null {
     target: candidate.target,
     formality: candidate.formality === "formal" ? "formal" : "informal",
     grammarCheck: normalizeGrammarCheck(candidate.grammarCheck),
+    showOptions: candidate.showOptions !== false,
     translationModel: normalizeModel(candidate.translationModel, DEFAULT_TRANSLATION_MODEL),
     grammarModel: normalizeModel(
       candidate.grammarModel === LEGACY_GRAMMAR_MODEL ? DEFAULT_GRAMMAR_MODEL : candidate.grammarModel,

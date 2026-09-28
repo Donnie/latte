@@ -107,6 +107,22 @@
   accent-color: var(--accent);
 }
 
+.optionToggle {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+
+.optionCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-right: auto;
+}
+
 .actions {
   display: flex;
   justify-content: flex-end;
