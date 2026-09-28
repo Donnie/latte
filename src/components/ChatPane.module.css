@@ -141,10 +141,49 @@
   background: var(--accent-soft);
 }
 
+.speech {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--muted);
+  border-radius: 6px;
+  padding: 2px 6px;
+  line-height: 1;
+  font-size: 12px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.speech:hover {
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+}
+
+.speechError {
+  color: var(--danger);
+  opacity: 1;
+}
+
+.speechLive {
+  opacity: 1;
+}
+
+.speechSpinner {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: paneSpin 0.8s linear infinite;
+}
+
 .row:hover .delete,
 .row:hover .copy,
+.row:hover .speech,
 .delete:focus-visible,
-.copy:focus-visible {
+.copy:focus-visible,
+.speech:focus-visible {
   opacity: 1;
 }
 
@@ -155,8 +194,14 @@
 
 @media (hover: none) {
   .delete,
-  .copy {
+  .copy,
+  .speech {
     opacity: 0.45;
+  }
+
+  .speech.speechLive,
+  .speech.speechError {
+    opacity: 1;
   }
 }
 

@@ -23,6 +23,8 @@ export interface Settings {
   showOptions: boolean;
   translationModel: string;
   grammarModel: string;
+  speechModel: string;
+  speechVoice: string;
 }
 
 export interface Message {

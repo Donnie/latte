@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { normalizeMultiline, uniqueOptionIndexes } from "../lib/text";
+import type { SpeechControls } from "../hooks/useSpeechPlayback";
 import type { Message, Pending, Side } from "../types";
 import ToggleSwitch from "./ToggleSwitch";
 import styles from "./ChatPane.module.css";
@@ -28,6 +29,51 @@ interface ChatPaneProps {
   onRetry(): void;
   onDeleteMessage(messageId: string): void;
   onClear(): void;
+  speech: SpeechControls;
+}
+
+function SpeechButtons({ message, speech }: { message: Message; speech: SpeechControls }) {
+  const phase = speech.phase(message.id);
+  if (phase === "loading") {
+    return <span className={styles.speechSpinner} role="status" aria-label="Loading speech" />;
+  }
+  if (phase === "playing" || phase === "paused") {
+    const paused = phase === "paused";
+    return (
+      <>
+        <button
+          type="button"
+          className={`${styles.speech} ${styles.speechLive}`}
+          onClick={paused ? speech.resume : speech.pause}
+          aria-label={paused ? "Resume speech" : "Pause speech"}
+          title={paused ? "Resume" : "Pause"}
+        >
+          {paused ? "▶" : "⏸"}
+        </button>
+        <button
+          type="button"
+          className={`${styles.speech} ${styles.speechLive}`}
+          onClick={() => speech.replay(message)}
+          aria-label="Replay speech"
+          title="Replay"
+        >
+          ↻
+        </button>
+      </>
+    );
+  }
+  const error = speech.error(message.id);
+  return (
+    <button
+      type="button"
+      className={error ? `${styles.speech} ${styles.speechError}` : styles.speech}
+      onClick={() => speech.play(message)}
+      aria-label={error || "Play speech"}
+      title={error || "Play"}
+    >
+      🔊
+    </button>
+  );
 }
 
 export default function ChatPane({
@@ -46,6 +92,7 @@ export default function ChatPane({
   onRetry,
   onDeleteMessage,
   onClear,
+  speech,
 }: ChatPaneProps) {
   const [draft, setDraft] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -143,6 +190,7 @@ export default function ChatPane({
             >
               {message.text}
             </div>
+            <SpeechButtons message={message} speech={speech} />
             <button
               type="button"
               className={styles.copy}

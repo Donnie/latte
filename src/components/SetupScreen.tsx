@@ -3,6 +3,9 @@ import {
   DEFAULT_DECISION_MODEL_SUGGESTIONS,
   DEFAULT_GRAMMAR_MODEL,
   DEFAULT_MODEL_SUGGESTIONS,
+  DEFAULT_SPEECH_MODEL,
+  DEFAULT_SPEECH_MODEL_SUGGESTIONS,
+  DEFAULT_SPEECH_VOICE,
   DEFAULT_TRANSLATION_MODEL,
   LANGUAGES,
 } from "../constants";
@@ -25,8 +28,11 @@ export default function SetupScreen({ initial, canCancel, onSave, onCancel }: Se
   const [showOptions, setShowOptions] = useState(initial?.showOptions !== false);
   const [translationModel, setTranslationModel] = useState(initial?.translationModel ?? DEFAULT_TRANSLATION_MODEL);
   const [grammarModel, setGrammarModel] = useState(initial?.grammarModel ?? DEFAULT_GRAMMAR_MODEL);
+  const [speechModel, setSpeechModel] = useState(initial?.speechModel ?? DEFAULT_SPEECH_MODEL);
+  const [speechVoice, setSpeechVoice] = useState(initial?.speechVoice ?? DEFAULT_SPEECH_VOICE);
   const [textModels, setTextModels] = useState<string[]>(DEFAULT_MODEL_SUGGESTIONS);
   const [decisionModels, setDecisionModels] = useState<string[]>(DEFAULT_DECISION_MODEL_SUGGESTIONS);
+  const [speechModels, setSpeechModels] = useState<string[]>(DEFAULT_SPEECH_MODEL_SUGGESTIONS);
 
   useEffect(() => {
     let cancelled = false;
@@ -56,10 +62,27 @@ export default function SetupScreen({ initial, canCancel, onSave, onCancel }: Se
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    fetchAvailableModels("speech")
+      .then((ids) => {
+        if (!cancelled) setSpeechModels(ids);
+      })
+      .catch(() => {
+        if (!cancelled) setSpeechModels(DEFAULT_SPEECH_MODEL_SUGGESTIONS);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const trimmedTranslationModel = translationModel.trim();
   const trimmedGrammarModel = grammarModel.trim();
+  const trimmedSpeechModel = speechModel.trim();
+  const trimmedSpeechVoice = speechVoice.trim();
   const sameLanguage = source === target;
-  const missingModel = trimmedTranslationModel === "" || trimmedGrammarModel === "";
+  const missingModel =
+    trimmedTranslationModel === "" || trimmedGrammarModel === "" || trimmedSpeechModel === "" || trimmedSpeechVoice === "";
   const isInvalid = sameLanguage || missingModel;
 
   function swap() {
@@ -102,7 +125,7 @@ export default function SetupScreen({ initial, canCancel, onSave, onCancel }: Se
         </label>
 
         {sameLanguage && <p className={styles.warning}>Pick two different languages.</p>}
-        {!sameLanguage && missingModel && <p className={styles.warning}>Enter both model IDs.</p>}
+        {!sameLanguage && missingModel && <p className={styles.warning}>Enter every model and a voice.</p>}
 
         <div className={styles.formality} role="radiogroup" aria-label="Tonality">
           <span className={styles.formalityLabel}>Tonality</span>
@@ -174,6 +197,37 @@ export default function SetupScreen({ initial, canCancel, onSave, onCancel }: Se
             <option key={id} value={id} />
           ))}
         </datalist>
+        <p className={styles.modelsHint}>
+          Speech uses an OpenRouter text-to-speech model. The voice name has to be one that model offers.
+        </p>
+        <label className={styles.field}>
+          <span>Speech model</span>
+          <input
+            list="openrouter-speech-models"
+            value={speechModel}
+            onChange={(event) => setSpeechModel(event.target.value)}
+            placeholder={DEFAULT_SPEECH_MODEL}
+            spellCheck={false}
+            autoCapitalize="off"
+            autoCorrect="off"
+          />
+        </label>
+        <label className={styles.field}>
+          <span>Voice</span>
+          <input
+            value={speechVoice}
+            onChange={(event) => setSpeechVoice(event.target.value)}
+            placeholder={DEFAULT_SPEECH_VOICE}
+            spellCheck={false}
+            autoCapitalize="off"
+            autoCorrect="off"
+          />
+        </label>
+        <datalist id="openrouter-speech-models">
+          {speechModels.map((id) => (
+            <option key={id} value={id} />
+          ))}
+        </datalist>
 
         <div className={styles.actions}>
           {canCancel && (
@@ -194,6 +248,8 @@ export default function SetupScreen({ initial, canCancel, onSave, onCancel }: Se
                 showOptions,
                 translationModel: trimmedTranslationModel,
                 grammarModel: trimmedGrammarModel,
+                speechModel: trimmedSpeechModel,
+                speechVoice: trimmedSpeechVoice,
               })
             }
           >

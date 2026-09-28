@@ -1,10 +1,10 @@
-import { DECISIONS_URL, MODELS_URL, OPENROUTER_URL } from "../constants";
+import { DECISIONS_URL, GENERATION_URL, MODELS_URL, OPENROUTER_URL, SPEECH_URL } from "../constants";
 import { normalizeMultiline } from "./text";
 import type { Formality } from "../types";
 
 export class OpenRouterError extends Error {}
 
-export type ModelKind = "text" | "decisions";
+export type ModelKind = "text" | "decisions" | "speech";
 
 interface RequestBase {
   apiKey: string;
@@ -58,7 +58,12 @@ export interface HasErrorsResult {
 }
 
 export async function fetchAvailableModels(kind: ModelKind = "text"): Promise<string[]> {
-  const url = kind === "decisions" ? `${MODELS_URL}?output_modalities=decisions` : MODELS_URL;
+  const url =
+    kind === "decisions"
+      ? `${MODELS_URL}?output_modalities=decisions`
+      : kind === "speech"
+        ? `${MODELS_URL}?output_modalities=speech`
+        : MODELS_URL;
   const response = await fetch(url);
   if (!response.ok) {
     throw new OpenRouterError(`Could not load models — ${response.statusText || "request failed"}`);
@@ -68,7 +73,7 @@ export async function fetchAvailableModels(kind: ModelKind = "text"): Promise<st
     throw new OpenRouterError("Unexpected response from OpenRouter.");
   }
   const ids = payload.data
-    .filter((model) => kind !== "decisions" || outputsDecisions(model))
+    .filter((model) => kind === "text" || outputsModality(model, kind))
     .map((model) => (typeof model.id === "string" ? model.id : ""))
     .filter((id) => id.length > 0)
     .sort((a, b) => a.localeCompare(b));
@@ -78,9 +83,64 @@ export async function fetchAvailableModels(kind: ModelKind = "text"): Promise<st
   return ids;
 }
 
-function outputsDecisions(model: ModelSummary): boolean {
+function outputsModality(model: ModelSummary, modality: "decisions" | "speech"): boolean {
   const modalities = model.architecture?.output_modalities;
-  return Array.isArray(modalities) && modalities.includes("decisions");
+  return Array.isArray(modalities) && modalities.includes(modality);
+}
+
+export interface SpeechAudio {
+  bytes: ArrayBuffer;
+  generationId: string | null;
+}
+
+const GENERATION_RETRY_MS = 1000;
+
+export async function synthesizeSpeech(request: RequestBase & { model: string; voice: string; text: string }): Promise<SpeechAudio> {
+  const response = await fetch(SPEECH_URL, {
+    method: "POST",
+    headers: buildHeaders(request.apiKey),
+    body: JSON.stringify({
+      model: request.model,
+      input: request.text,
+      voice: request.voice,
+      response_format: "mp3",
+    }),
+    signal: request.signal,
+  });
+
+  if (!response.ok) {
+    throw new OpenRouterError(await describeHttpError(response));
+  }
+
+  const bytes = await response.arrayBuffer();
+  if (bytes.byteLength === 0) {
+    throw new OpenRouterError("OpenRouter returned empty audio.");
+  }
+  const generationId = response.headers.get("x-generation-id");
+  return { bytes, generationId: generationId && generationId.length > 0 ? generationId : null };
+}
+
+export async function fetchGenerationCost(apiKey: string, generationId: string): Promise<number | null> {
+  const read = async (): Promise<number | null | "missing"> => {
+    const response = await fetch(`${GENERATION_URL}?id=${encodeURIComponent(generationId)}`, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "HTTP-Referer": window.location.origin,
+        "X-Title": "Latte Translator",
+      },
+    });
+    if (response.status === 404) return "missing";
+    if (!response.ok) return null;
+    const payload = (await response.json()) as { data?: { total_cost?: unknown } };
+    const cost = payload.data?.total_cost;
+    return typeof cost === "number" && Number.isFinite(cost) ? cost : null;
+  };
+
+  const first = await read();
+  if (first !== "missing") return first;
+  await new Promise((resolve) => setTimeout(resolve, GENERATION_RETRY_MS));
+  const second = await read();
+  return second === "missing" ? null : second;
 }
 
 export async function fetchHasGrammarErrors(request: ProofreadRequest): Promise<HasErrorsResult> {

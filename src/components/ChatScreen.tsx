@@ -7,6 +7,7 @@ import {
   streamTranslationOptions,
   type CompletionResult,
 } from "../lib/openrouter";
+import { useSpeechPlayback } from "../hooks/useSpeechPlayback";
 import { uuid } from "../lib/uuid";
 import type { ChatLog, ChatStore, Message, Pending, PendingKind, Settings, Side, Theme } from "../types";
 import ChatPane from "./ChatPane";
@@ -68,6 +69,13 @@ export default function ChatScreen({
   const chatKey = chatKeyOf(settings);
   const stored = chats[chatKey];
   const messages: ChatLog = Array.isArray(stored) ? stored : [];
+  const speech = useSpeechPlayback({
+    apiKey,
+    model: settings.speechModel,
+    voice: settings.speechVoice,
+    messages,
+    onCost: onAddCost,
+  });
 
   const [pending, setPending] = useState<Partial<Record<Side, Pending>>>({});
   const controllers = useRef<Partial<Record<Side, AbortController>>>({});
@@ -550,6 +558,7 @@ export default function ChatScreen({
           onRetry={() => handleRetry("left")}
           onDeleteMessage={(messageId) => onRemoveMessage(chatKey, messageId)}
           onClear={() => handleClear("left")}
+          speech={speech}
         />
         <ChatPane
           side="right"
@@ -567,6 +576,7 @@ export default function ChatScreen({
           onRetry={() => handleRetry("right")}
           onDeleteMessage={(messageId) => onRemoveMessage(chatKey, messageId)}
           onClear={() => handleClear("right")}
+          speech={speech}
         />
       </main>
     </div>
