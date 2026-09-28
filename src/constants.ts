@@ -2,6 +2,8 @@ import type { ChatStore, Language } from "./types";
 
 export const DEFAULT_TRANSLATION_MODEL = "z-ai/glm-5.3-flash";
 export const DEFAULT_GRAMMAR_MODEL = "~typesafe/jev-latest";
+export const DEFAULT_SPEECH_MODEL = "x-ai/grok-voice-tts-1.0";
+export const DEFAULT_SPEECH_VOICE = "eve";
 export const LEGACY_GRAMMAR_MODEL = "typesafe/jev-router";
 export const DEFAULT_MODEL_SUGGESTIONS = [DEFAULT_TRANSLATION_MODEL];
 export const DEFAULT_DECISION_MODEL_SUGGESTIONS = [
@@ -13,6 +15,8 @@ export const DEFAULT_DECISION_MODEL_SUGGESTIONS = [
 export const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 export const DECISIONS_URL = "https://openrouter.ai/api/alpha/decisions";
 export const MODELS_URL = "https://openrouter.ai/api/v1/models";
+export const SPEECH_URL = "https://openrouter.ai/api/v1/audio/speech";
+export const GENERATION_URL = "https://openrouter.ai/api/v1/generation";
 export const AUTH_URL = "https://openrouter.ai/auth";
 export const AUTH_KEYS_URL = "https://openrouter.ai/api/v1/auth/keys";
 export const APP_KEY_LABEL = "Latte";

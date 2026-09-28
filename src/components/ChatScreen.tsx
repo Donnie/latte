@@ -1,11 +1,13 @@
 import { useRef, useState } from "react";
 import { languageName, OPTIONS_PER_REQUEST } from "../constants";
+import { soleOption } from "../lib/text";
 import {
   fetchHasGrammarErrors,
   streamCorrectionOptions,
   streamTranslationOptions,
   type CompletionResult,
 } from "../lib/openrouter";
+import { useSpeechPlayback } from "../hooks/useSpeechPlayback";
 import { uuid } from "../lib/uuid";
 import type { ChatLog, ChatStore, Message, Pending, PendingKind, Settings, Side, Theme } from "../types";
 import ChatPane from "./ChatPane";
@@ -38,6 +40,10 @@ function otherSide(side: Side): Side {
   return side === "left" ? "right" : "left";
 }
 
+function optionCountFor(showOptions: boolean): number {
+  return showOptions ? OPTIONS_PER_REQUEST : 1;
+}
+
 function formatCost(cost: number): string {
   if (cost <= 0) return "$0.00";
   if (cost < 0.01) return `$${cost.toFixed(6)}`;
@@ -63,6 +69,13 @@ export default function ChatScreen({
   const chatKey = chatKeyOf(settings);
   const stored = chats[chatKey];
   const messages: ChatLog = Array.isArray(stored) ? stored : [];
+  const speech = useSpeechPlayback({
+    apiKey,
+    model: settings.speechModel,
+    voice: settings.speechVoice,
+    messages,
+    onCost: onAddCost,
+  });
 
   const [pending, setPending] = useState<Partial<Record<Side, Pending>>>({});
   const controllers = useRef<Partial<Record<Side, AbortController>>>({});
@@ -102,6 +115,7 @@ export default function ChatScreen({
 
   async function grammarCheck(side: Side, text: string) {
     const language = languageName(side === "left" ? settings.source : settings.target);
+    const optionCount = optionCountFor(settings.showOptions);
 
     controllers.current[side]?.abort();
     const controller = new AbortController();
@@ -164,16 +178,17 @@ export default function ChatScreen({
         kind: "grammar",
         status: "streaming",
         sourceText: text,
-        options: Array.from({ length: OPTIONS_PER_REQUEST }, () => ""),
-        settled: Array.from({ length: OPTIONS_PER_REQUEST }, () => false),
+        options: Array.from({ length: optionCount }, () => ""),
+        settled: Array.from({ length: optionCount }, () => false),
         error: "",
       });
 
       const aborts: Array<() => void> = [];
       const promises: Promise<CompletionResult>[] = [];
+      const finals = Array.from({ length: optionCount }, () => "");
       let settledCount = 0;
 
-      for (let index = 0; index < OPTIONS_PER_REQUEST; index += 1) {
+      for (let index = 0; index < optionCount; index += 1) {
         const handle = streamCorrectionOptions(
           { apiKey, model: settings.translationModel, text, language },
           (full) => patchOption(index, full),
@@ -184,9 +199,17 @@ export default function ChatScreen({
           (result) => {
             if (!isCurrentRequest(side, requestId)) return;
             onAddCost(result.cost);
+            finals[index] = result.content;
             settledCount += 1;
             markSettled(index, result.content);
-            if (settledCount === OPTIONS_PER_REQUEST) markReady();
+            if (settledCount !== optionCount) return;
+            const only = soleOption(finals);
+            if (only !== undefined && pickedIndexRef.current[side] === undefined) {
+              delete streamsRef.current[side];
+              void postForTranslation(side, requestId, only);
+              return;
+            }
+            markReady();
           },
           (error) => {
             if (error instanceof DOMException && error.name === "AbortError") return;
@@ -222,6 +245,7 @@ export default function ChatScreen({
     const targetSide = otherSide(inputSide);
     const sourceLanguage = languageName(inputSide === "left" ? settings.source : settings.target);
     const targetLanguage = languageName(inputSide === "left" ? settings.target : settings.source);
+    const optionCount = optionCountFor(settings.showOptions);
 
     controllers.current[inputSide]?.abort();
     const controller = new AbortController();
@@ -234,8 +258,8 @@ export default function ChatScreen({
       kind: "translation",
       status: "streaming",
       sourceText: text,
-      options: Array.from({ length: OPTIONS_PER_REQUEST }, () => ""),
-      settled: Array.from({ length: OPTIONS_PER_REQUEST }, () => false),
+      options: Array.from({ length: optionCount }, () => ""),
+      settled: Array.from({ length: optionCount }, () => false),
       error: "",
     });
 
@@ -272,9 +296,10 @@ export default function ChatScreen({
 
     const aborts: Array<() => void> = [];
     const promises: Promise<CompletionResult>[] = [];
+    const finals = Array.from({ length: optionCount }, () => "");
     let settledCount = 0;
 
-    for (let index = 0; index < OPTIONS_PER_REQUEST; index += 1) {
+    for (let index = 0; index < optionCount; index += 1) {
       const handle = streamTranslationOptions(
         {
           apiKey,
@@ -292,9 +317,18 @@ export default function ChatScreen({
         (result) => {
           if (!isCurrentRequest(targetSide, requestId)) return;
           onAddCost(result.cost);
+          finals[index] = result.content;
           settledCount += 1;
           markSettled(index, result.content);
-          if (settledCount === OPTIONS_PER_REQUEST) markReady();
+          if (settledCount !== optionCount) return;
+          const only = soleOption(finals);
+          if (only !== undefined && pickedIndexRef.current[targetSide] === undefined) {
+            delete streamsRef.current[targetSide];
+            appendMessage(targetSide, only);
+            clearPending(targetSide);
+            return;
+          }
+          markReady();
         },
         (error) => {
           if (error instanceof DOMException && error.name === "AbortError") return;
@@ -462,39 +496,49 @@ export default function ChatScreen({
   return (
     <div className={styles.screen}>
       <header className={styles.header}>
-        <span className={styles.brand}>☕ Latte</span>
-        <GitHubLink />
+        <div className={styles.brandCluster}>
+          <span className={styles.brand}>☕ Latte</span>
+          <GitHubLink />
+        </div>
         <div className={styles.pairInfo}>
           <span className={styles.pair}>
             {languageName(settings.source)} ⇄ {languageName(settings.target)}
           </span>
         </div>
         <div className={styles.actions}>
-          <ToggleSwitch
-            label="Formal"
-            checked={settings.formality === "formal"}
-            onChange={handleToggleFormality}
-          />
-          <ThemeToggle theme={theme} onToggle={onToggleTheme} />
-          <span className={styles.costChip} title="Total OpenRouter spend on this device">
-            Σ {formatCost(totalCost)}
-          </span>
-          <button
-            type="button"
-            className={styles.iconButton}
-            onClick={onOpenSettings}
-            aria-label="Translation settings"
-          >
-            ⚙︎ Settings
-          </button>
-          <button
-            type="button"
-            className={styles.iconButton}
-            onClick={onLogout}
-            aria-label="Log out and clear all stored data"
-          >
-            ⎋ Log out
-          </button>
+          <div className={styles.formality}>
+            <ToggleSwitch
+              label="Formal"
+              checked={settings.formality === "formal"}
+              onChange={handleToggleFormality}
+            />
+          </div>
+          <div className={styles.tools}>
+            <ThemeToggle theme={theme} onToggle={onToggleTheme} />
+            <span className={styles.costChip} title="Total OpenRouter spend on this device">
+              Σ {formatCost(totalCost)}
+            </span>
+          </div>
+          <div className={styles.session}>
+            <button
+              type="button"
+              className={styles.iconButton}
+              onClick={onOpenSettings}
+              aria-label="Translation settings"
+            >
+              <span className={styles.buttonIcon} aria-hidden="true">⚙︎</span>
+              <span className={styles.buttonLabel}>Settings</span>
+            </button>
+            <button
+              type="button"
+              className={styles.iconButton}
+              onClick={onLogout}
+              aria-label="Log out and clear all stored data"
+            >
+              <span className={styles.buttonIcon} aria-hidden="true">⎋</span>
+              <span className={styles.buttonLabel}>Log out</span>
+            </button>
+          </div>
         </div>
       </header>
       <main className={styles.panes}>
@@ -514,6 +558,7 @@ export default function ChatScreen({
           onRetry={() => handleRetry("left")}
           onDeleteMessage={(messageId) => onRemoveMessage(chatKey, messageId)}
           onClear={() => handleClear("left")}
+          speech={speech}
         />
         <ChatPane
           side="right"
@@ -531,6 +576,7 @@ export default function ChatScreen({
           onRetry={() => handleRetry("right")}
           onDeleteMessage={(messageId) => onRemoveMessage(chatKey, messageId)}
           onClear={() => handleClear("right")}
+          speech={speech}
         />
       </main>
     </div>

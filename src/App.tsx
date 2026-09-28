@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import ChatScreen, { chatKeyOf } from "./components/ChatScreen";
 import LoginScreen from "./components/LoginScreen";
 import SetupScreen from "./components/SetupScreen";
-import { EMPTY_CHATS, DEFAULT_GRAMMAR_MODEL, DEFAULT_TRANSLATION_MODEL, LEGACY_GRAMMAR_MODEL, STORAGE_KEYS } from "./constants";
+import { EMPTY_CHATS, DEFAULT_GRAMMAR_MODEL, DEFAULT_SPEECH_MODEL, DEFAULT_SPEECH_VOICE, DEFAULT_TRANSLATION_MODEL, LEGACY_GRAMMAR_MODEL, STORAGE_KEYS } from "./constants";
 import { usePersistentState } from "./hooks/usePersistentState";
 import { exchangeAuthCode, readAuthCodeFromUrl, readAuthErrorFromUrl } from "./lib/auth";
+import { clearSpeechFiles, dropSpeechFile, dropSpeechFiles } from "./lib/speechFiles";
 import { clearAppStorage } from "./lib/storage";
 import { applyTheme, initialTheme, storeTheme } from "./lib/theme";
 import type { ChatStore, GrammarCheckSetting, Message, Screen, Settings, Side, Theme } from "./types";
@@ -94,6 +95,7 @@ export default function App() {
   }
 
   function removeMessage(chatKey: string, messageId: string) {
+    dropSpeechFile(messageId);
     setChats((prev) => {
       const log = Array.isArray(prev[chatKey]) ? prev[chatKey] : [];
       return { ...prev, [chatKey]: log.filter((message) => message.id !== messageId) };
@@ -101,9 +103,11 @@ export default function App() {
   }
 
   function clearChatSide(chatKey: string, side: Side) {
+    const log = Array.isArray(chats[chatKey]) ? chats[chatKey] : [];
+    dropSpeechFiles(log.filter((message) => message.side === side).map((message) => message.id));
     setChats((prev) => {
-      const log = Array.isArray(prev[chatKey]) ? prev[chatKey] : [];
-      return { ...prev, [chatKey]: log.filter((message) => message.side !== side) };
+      const current = Array.isArray(prev[chatKey]) ? prev[chatKey] : [];
+      return { ...prev, [chatKey]: current.filter((message) => message.side !== side) };
     });
   }
 
@@ -121,6 +125,7 @@ export default function App() {
     setChats(EMPTY_CHATS);
     setTotalCost(0);
     setScreen(null);
+    clearSpeechFiles();
     clearAppStorage(Object.values(STORAGE_KEYS).filter((key) => key !== STORAGE_KEYS.theme));
   }
 }
@@ -134,11 +139,14 @@ function normalizeSettings(value: unknown): Settings | null {
     target: candidate.target,
     formality: candidate.formality === "formal" ? "formal" : "informal",
     grammarCheck: normalizeGrammarCheck(candidate.grammarCheck),
+    showOptions: candidate.showOptions !== false,
     translationModel: normalizeModel(candidate.translationModel, DEFAULT_TRANSLATION_MODEL),
     grammarModel: normalizeModel(
       candidate.grammarModel === LEGACY_GRAMMAR_MODEL ? DEFAULT_GRAMMAR_MODEL : candidate.grammarModel,
       DEFAULT_GRAMMAR_MODEL,
     ),
+    speechModel: normalizeModel(candidate.speechModel, DEFAULT_SPEECH_MODEL),
+    speechVoice: normalizeModel(candidate.speechVoice, DEFAULT_SPEECH_VOICE),
   };
 }
 

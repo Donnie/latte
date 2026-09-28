@@ -1,10 +1,17 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { normalizeMultiline } from "../lib/text";
+import { normalizeMultiline, uniqueOptionIndexes } from "../lib/text";
+import type { SpeechControls } from "../hooks/useSpeechPlayback";
 import type { Message, Pending, Side } from "../types";
 import ToggleSwitch from "./ToggleSwitch";
 import styles from "./ChatPane.module.css";
 
 const INPUT_MAX_HEIGHT = 132;
+
+function optionIndexes(pending: Pending): number[] {
+  if (pending.pickedIndex !== undefined) return [pending.pickedIndex];
+  if (pending.status === "streaming") return pending.options.map((_, index) => index);
+  return uniqueOptionIndexes(pending.options);
+}
 
 interface ChatPaneProps {
   side: Side;
@@ -22,6 +29,51 @@ interface ChatPaneProps {
   onRetry(): void;
   onDeleteMessage(messageId: string): void;
   onClear(): void;
+  speech: SpeechControls;
+}
+
+function SpeechButtons({ message, speech }: { message: Message; speech: SpeechControls }) {
+  const phase = speech.phase(message.id);
+  if (phase === "loading") {
+    return <span className={styles.speechSpinner} role="status" aria-label="Loading speech" />;
+  }
+  if (phase === "playing" || phase === "paused") {
+    const paused = phase === "paused";
+    return (
+      <>
+        <button
+          type="button"
+          className={`${styles.speech} ${styles.speechLive}`}
+          onClick={paused ? speech.resume : speech.pause}
+          aria-label={paused ? "Resume speech" : "Pause speech"}
+          title={paused ? "Resume" : "Pause"}
+        >
+          {paused ? "▶" : "⏸"}
+        </button>
+        <button
+          type="button"
+          className={`${styles.speech} ${styles.speechLive}`}
+          onClick={() => speech.replay(message)}
+          aria-label="Replay speech"
+          title="Replay"
+        >
+          ↻
+        </button>
+      </>
+    );
+  }
+  const error = speech.error(message.id);
+  return (
+    <button
+      type="button"
+      className={error ? `${styles.speech} ${styles.speechError}` : styles.speech}
+      onClick={() => speech.play(message)}
+      aria-label={error || "Play speech"}
+      title={error || "Play"}
+    >
+      🔊
+    </button>
+  );
 }
 
 export default function ChatPane({
@@ -40,6 +92,7 @@ export default function ChatPane({
   onRetry,
   onDeleteMessage,
   onClear,
+  speech,
 }: ChatPaneProps) {
   const [draft, setDraft] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -137,6 +190,7 @@ export default function ChatPane({
             >
               {message.text}
             </div>
+            <SpeechButtons message={message} speech={speech} />
             <button
               type="button"
               className={styles.copy}
@@ -175,23 +229,21 @@ export default function ChatPane({
                 ✕
               </button>
             </div>
-            {(pending.pickedIndex !== undefined ? [pending.pickedIndex] : pending.options.map((_, index) => index)).map(
-              (index) => {
-                const settled = pending.settled?.[index] ?? true;
-                return (
-                  <button
-                    key={index}
-                    type="button"
-                    className={
-                      settled ? styles.correctionOption : `${styles.correctionOption} ${styles.optionStreaming}`
-                    }
-                    onClick={() => onPickCorrection(index)}
-                  >
-                    {pending.options[index]}
-                  </button>
-                );
-              },
-            )}
+            {optionIndexes(pending).map((index) => {
+              const settled = pending.settled?.[index] ?? true;
+              return (
+                <button
+                  key={index}
+                  type="button"
+                  className={
+                    settled ? styles.correctionOption : `${styles.correctionOption} ${styles.optionStreaming}`
+                  }
+                  onClick={() => onPickCorrection(index)}
+                >
+                  {pending.options[index]}
+                </button>
+              );
+            })}
             {pending.pickedIndex === undefined && (
               <button type="button" className={styles.boxLink} onClick={onSendOriginal}>
                 Send as is
@@ -203,21 +255,19 @@ export default function ChatPane({
         {pending?.kind === "translation" &&
           (pending?.status === "streaming" || pending?.status === "ready") && (
           <div className={styles.options}>
-            {(pending.pickedIndex !== undefined ? [pending.pickedIndex] : pending.options.map((_, index) => index)).map(
-              (index) => {
-                const settled = pending.settled?.[index] ?? true;
-                return (
-                  <button
-                    key={index}
-                    type="button"
-                    className={settled ? styles.option : `${styles.option} ${styles.optionStreaming}`}
-                    onClick={() => onPick(index)}
-                  >
-                    {pending.options[index]}
-                  </button>
-                );
-              },
-            )}
+            {optionIndexes(pending).map((index) => {
+              const settled = pending.settled?.[index] ?? true;
+              return (
+                <button
+                  key={index}
+                  type="button"
+                  className={settled ? styles.option : `${styles.option} ${styles.optionStreaming}`}
+                  onClick={() => onPick(index)}
+                >
+                  {pending.options[index]}
+                </button>
+              );
+            })}
             {pending.pickedIndex === undefined && (
               <button type="button" className={styles.boxLink} onClick={handleDismiss}>
                 None of these
