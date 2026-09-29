@@ -24,8 +24,8 @@ A two-pane chat translator for language pairs, powered by OpenRouter. Type in ei
 - **Optional grammar check**: a per-pane toggle that reviews your draft with a checker model; if it finds mistakes you get up to three corrected versions, and you can send as is, dismiss, or edit
 - **Formal or informal**: choose the tonality your translations should carry, on the setup screen or with the Formal switch in the chat header
 - **Your models**: translation can use any OpenRouter text model, the grammar check is limited to typed decision models that answer with probabilities instead of text, and speech uses a multilingual OpenRouter speech model plus one of its voices (defaults: `z-ai/glm-5.3-flash` for translation, `~typesafe/jev-latest` for checks, `x-ai/grok-voice-tts-1.0` with the `eve` voice)
-- **Listen to any bubble**: hover a bubble and tap the speaker to play it; pause, resume, or replay while it is active. Audio is generated on demand, cached for the session, and its cost is added to the running total
-- **Cost transparency**: a running total of API spend sits in the header
+- **Listen to any bubble**: hover a bubble and tap the speaker to play it; pause, resume, or replay while it is active. Audio is generated on demand and cached for the session
+- **Cost transparency**: the header shows this API key’s all-time OpenRouter usage. It loads on login, refreshes after each request, and updates again when you click it. The reading stays in this browser until you log out
 - **Copy any bubble**: hover a bubble and tap the copy glyph to put its text on the clipboard
 - **Light or dark**: theme toggle on the login screen and beside the cost header; starts in light mode until you choose, then your choice persists in this browser
 - **Tidy controls**: delete any bubble, clear one pane, reopen settings, or log out to wipe your data (your theme preference is kept)
@@ -39,7 +39,7 @@ A two-pane chat translator for language pairs, powered by OpenRouter. Type in ei
 2. Click "Sign in with OpenRouter", log in, and authorize — Latte creates and stores the key for you automatically
 3. Choose your languages and tonality, and start chatting
 
-You can also paste an existing OpenRouter key instead. Your key, chats, and spend total are stored only in this browser. Log out to erase them (your theme preference is kept).
+You can also paste an existing OpenRouter key instead. Your key, chats, and the last usage reading are stored only in this browser. Log out to erase them (your theme preference is kept).
 
 ## Development
 

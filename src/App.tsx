@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ChatScreen, { chatKeyOf } from "./components/ChatScreen";
 import LoginScreen from "./components/LoginScreen";
 import SetupScreen from "./components/SetupScreen";
 import { EMPTY_CHATS, DEFAULT_GRAMMAR_MODEL, DEFAULT_SPEECH_MODEL, DEFAULT_SPEECH_VOICE, DEFAULT_TRANSLATION_MODEL, LEGACY_GRAMMAR_MODEL, STORAGE_KEYS } from "./constants";
 import { usePersistentState } from "./hooks/usePersistentState";
 import { exchangeAuthCode, readAuthCodeFromUrl, readAuthErrorFromUrl } from "./lib/auth";
+import { refreshKeyUsage, setKeyUsageListener } from "./lib/openrouter";
 import { clearSpeechFiles, dropSpeechFile, dropSpeechFiles } from "./lib/speechFiles";
 import { clearAppStorage } from "./lib/storage";
 import { applyTheme, initialTheme, storeTheme } from "./lib/theme";
@@ -19,10 +20,25 @@ export default function App() {
   const [screen, setScreen] = useState<Screen | null>(null);
   const [oauthPending, setOauthPending] = useState(false);
   const [oauthError, setOauthError] = useState<string | null>(null);
+  const apiKeyRef = useRef(apiKey);
+  apiKeyRef.current = apiKey;
 
   useEffect(() => {
     applyTheme(theme);
   }, [theme]);
+
+  useEffect(() => {
+    setKeyUsageListener((key, usage) => {
+      if (key !== apiKeyRef.current) return;
+      setTotalCost(usage);
+    });
+    return () => setKeyUsageListener(null);
+  }, [setTotalCost]);
+
+  useEffect(() => {
+    if (!apiKey) return;
+    void refreshKeyUsage(apiKey);
+  }, [apiKey]);
 
   useEffect(() => {
     const urlError = readAuthErrorFromUrl();
@@ -67,9 +83,9 @@ export default function App() {
           onAppendMessage={appendMessage}
           onRemoveMessage={removeMessage}
           onClearSide={clearChatSide}
-          onAddCost={addCost}
           onSettingsChange={setStoredSettings}
           onOpenSettings={() => setScreen("setup")}
+          onRefreshCost={() => void refreshKeyUsage(apiKey)}
           onLogout={logout}
         />
       )}
@@ -108,14 +124,6 @@ export default function App() {
     setChats((prev) => {
       const current = Array.isArray(prev[chatKey]) ? prev[chatKey] : [];
       return { ...prev, [chatKey]: current.filter((message) => message.side !== side) };
-    });
-  }
-
-  function addCost(cost: number) {
-    if (!Number.isFinite(cost)) return;
-    setTotalCost((prev) => {
-      const base = Number.isFinite(prev) ? prev : 0;
-      return (Math.round(base * 1e9) + Math.round(cost * 1e9)) / 1e9;
     });
   }
 
