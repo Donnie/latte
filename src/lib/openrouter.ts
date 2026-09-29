@@ -1,4 +1,4 @@
-import { DECISIONS_URL, GENERATION_URL, MODELS_URL, OPENROUTER_URL, SPEECH_URL } from "../constants";
+import { DECISIONS_URL, KEY_URL, MODELS_URL, OPENROUTER_URL, SPEECH_URL } from "../constants";
 import { normalizeMultiline } from "./text";
 import type { Formality } from "../types";
 
@@ -33,13 +33,11 @@ interface ChatMessage {
 interface OpenRouterResponse {
   error?: { message?: string };
   choices?: Array<{ message?: { content?: unknown } }>;
-  usage?: { cost?: unknown };
 }
 
 interface DecisionsResponse {
   error?: { message?: string };
   answers?: Record<string, { type?: unknown; noul?: unknown }>;
-  usage?: { cost?: unknown };
 }
 
 interface ModelSummary {
@@ -58,12 +56,23 @@ export interface SpeechModelOption {
 
 export interface CompletionResult {
   content: string;
-  cost: number;
 }
 
 export interface HasErrorsResult {
   hasErrors: boolean;
-  cost: number;
+}
+
+type KeyUsageListener = (apiKey: string, usage: number) => void;
+
+let keyUsageListener: KeyUsageListener | null = null;
+let keyUsageRead = 0;
+
+export function setKeyUsageListener(listener: KeyUsageListener | null): void {
+  keyUsageListener = listener;
+}
+
+export function refreshKeyUsage(apiKey: string): Promise<void> {
+  return publishKeyUsage(apiKey);
 }
 
 export async function fetchAvailableModels(kind: ModelKind = "text"): Promise<string[]> {
@@ -126,10 +135,10 @@ function isEnglishOnlySpeech(description: string): boolean {
 function isLanguageLockedVoice(voice: string): boolean {
   return (
     /^[a-z]{2}-[A-Z]{2}-/.test(voice) ||
-    /-(?:en|fr|es|de|ja|pt|it|nl|hi)$/i.test(voice) ||
+    /-(?:en|fr|es|de|el|ja|pt|it|nl|hi|bn)$/i.test(voice) ||
     /^(?:af|am|bf|bm|ef|em|ff|hf|hm|if|im|jf|jm|pf|pm|zf|zm)_/.test(voice) ||
-    /^(?:en|gb|fr|de|es|pt|it|nl|ja|zh|ko|hi|pl|ru|ar)_/.test(voice) ||
-    /^(?:English|Chinese|Japanese|Korean|French|German|Spanish|Portuguese|Italian|Dutch|Polish|Russian|Turkish|Arabic|Hindi)_/.test(voice)
+    /^(?:en|gb|fr|de|el|es|pt|it|nl|ja|zh|ko|hi|bn|pl|ru|ar)_/.test(voice) ||
+    /^(?:English|Chinese|Japanese|Korean|French|German|Greek|Spanish|Portuguese|Italian|Dutch|Polish|Russian|Turkish|Arabic|Hindi|Bengali)_/.test(voice)
   );
 }
 
@@ -140,10 +149,7 @@ function outputsModality(model: ModelSummary, modality: "decisions" | "speech"):
 
 export interface SpeechAudio {
   bytes: ArrayBuffer;
-  generationId: string | null;
 }
-
-const GENERATION_RETRY_MS = 1000;
 
 export async function synthesizeSpeech(request: RequestBase & { model: string; voice: string; text: string }): Promise<SpeechAudio> {
   const response = await fetch(SPEECH_URL, {
@@ -158,39 +164,47 @@ export async function synthesizeSpeech(request: RequestBase & { model: string; v
     signal: request.signal,
   });
 
-  if (!response.ok) {
-    throw new OpenRouterError(await describeHttpError(response));
-  }
+  try {
+    if (!response.ok) {
+      throw new OpenRouterError(await describeHttpError(response));
+    }
 
-  const bytes = await response.arrayBuffer();
-  if (bytes.byteLength === 0) {
-    throw new OpenRouterError("OpenRouter returned empty audio.");
+    const bytes = await response.arrayBuffer();
+    if (bytes.byteLength === 0) {
+      throw new OpenRouterError("OpenRouter returned empty audio.");
+    }
+    return { bytes };
+  } finally {
+    await publishKeyUsage(request.apiKey);
   }
-  const generationId = response.headers.get("x-generation-id");
-  return { bytes, generationId: generationId && generationId.length > 0 ? generationId : null };
 }
 
-export async function fetchGenerationCost(apiKey: string, generationId: string): Promise<number | null> {
-  const read = async (): Promise<number | null | "missing"> => {
-    const response = await fetch(`${GENERATION_URL}?id=${encodeURIComponent(generationId)}`, {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "HTTP-Referer": window.location.origin,
-        "X-Title": "Latte Translator",
-      },
-    });
-    if (response.status === 404) return "missing";
-    if (!response.ok) return null;
-    const payload = (await response.json()) as { data?: { total_cost?: unknown } };
-    const cost = payload.data?.total_cost;
-    return typeof cost === "number" && Number.isFinite(cost) ? cost : null;
-  };
+async function publishKeyUsage(apiKey: string): Promise<void> {
+  const listener = keyUsageListener;
+  if (!listener) return;
+  const readId = ++keyUsageRead;
+  let usage: number | null = null;
+  try {
+    usage = await fetchKeyUsage(apiKey);
+  } catch {
+    return;
+  }
+  if (usage === null || readId !== keyUsageRead) return;
+  listener(apiKey, usage);
+}
 
-  const first = await read();
-  if (first !== "missing") return first;
-  await new Promise((resolve) => setTimeout(resolve, GENERATION_RETRY_MS));
-  const second = await read();
-  return second === "missing" ? null : second;
+async function fetchKeyUsage(apiKey: string): Promise<number | null> {
+  const response = await fetch(KEY_URL, {
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "HTTP-Referer": window.location.origin,
+      "X-Title": "Latte Translator",
+    },
+  });
+  if (!response.ok) return null;
+  const payload = (await response.json()) as { data?: { usage?: unknown } };
+  const usage = payload.data?.usage;
+  return typeof usage === "number" && Number.isFinite(usage) ? usage : null;
 }
 
 export async function fetchHasGrammarErrors(request: ProofreadRequest): Promise<HasErrorsResult> {
@@ -215,20 +229,23 @@ export async function fetchHasGrammarErrors(request: ProofreadRequest): Promise<
     signal: request.signal,
   });
 
-  if (!response.ok) {
-    throw new OpenRouterError(await describeHttpError(response));
-  }
+  try {
+    if (!response.ok) {
+      throw new OpenRouterError(await describeHttpError(response));
+    }
 
-  const payload = (await response.json()) as DecisionsResponse;
-  if (payload.error) {
-    throw new OpenRouterError(payload.error.message ?? "OpenRouter returned an error.");
+    const payload = (await response.json()) as DecisionsResponse;
+    if (payload.error) {
+      throw new OpenRouterError(payload.error.message ?? "OpenRouter returned an error.");
+    }
+    const answer = payload.answers?.has_errors;
+    if (answer?.type !== "noul" || typeof answer.noul !== "number" || !Number.isFinite(answer.noul)) {
+      throw new OpenRouterError("Unexpected response from OpenRouter.");
+    }
+    return { hasErrors: answer.noul > 0.5 };
+  } finally {
+    await publishKeyUsage(request.apiKey);
   }
-  const answer = payload.answers?.has_errors;
-  if (answer?.type !== "noul" || typeof answer.noul !== "number" || !Number.isFinite(answer.noul)) {
-    throw new OpenRouterError("Unexpected response from OpenRouter.");
-  }
-  const cost = typeof payload.usage?.cost === "number" ? payload.usage.cost : 0;
-  return { hasErrors: answer.noul > 0.5, cost };
 }
 
 export function streamCorrectionOptions(
@@ -311,7 +328,6 @@ function buildHeaders(apiKey: string): HeadersInit {
 interface StreamChunk {
   error?: { message?: string };
   choices?: Array<{ delta?: { content?: unknown } }>;
-  usage?: { cost?: unknown };
 }
 
 function streamChatCompletion(
@@ -336,7 +352,6 @@ async function readStreamedCompletion(
     model: request.model,
     messages,
     stream: true,
-    usage: { include: true },
   };
   if (temperature !== undefined) body.temperature = temperature;
 
@@ -347,18 +362,25 @@ async function readStreamedCompletion(
     signal,
   });
 
-  if (!response.ok) {
-    throw new OpenRouterError(await describeHttpError(response));
-  }
-  if (!response.body) {
-    throw new OpenRouterError("OpenRouter returned an empty stream.");
-  }
+  try {
+    if (!response.ok) {
+      throw new OpenRouterError(await describeHttpError(response));
+    }
+    if (!response.body) {
+      throw new OpenRouterError("OpenRouter returned an empty stream.");
+    }
 
-  const reader = response.body.getReader();
+    return await readCompletionBody(response.body, onDelta);
+  } finally {
+    await publishKeyUsage(request.apiKey);
+  }
+}
+
+async function readCompletionBody(body: ReadableStream<Uint8Array>, onDelta: (full: string) => void): Promise<CompletionResult> {
+  const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
   let content = "";
-  let cost = 0;
   let stopped = false;
 
   const handleLine = (rawLine: string): "continue" | "stop" => {
@@ -380,7 +402,6 @@ async function readStreamedCompletion(
       content += delta;
       onDelta(content);
     }
-    if (typeof chunk.usage?.cost === "number") cost = chunk.usage.cost;
     return "continue";
   };
 
@@ -402,7 +423,7 @@ async function readStreamedCompletion(
   if (content.length === 0) {
     throw new OpenRouterError("OpenRouter returned an empty translation.");
   }
-  return { content: cleanSingleTranslation(content), cost };
+  return { content: cleanSingleTranslation(content) };
 }
 
 function cleanSingleTranslation(raw: string): string {

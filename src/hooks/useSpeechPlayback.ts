@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { fetchGenerationCost, synthesizeSpeech } from "../lib/openrouter";
+import { synthesizeSpeech } from "../lib/openrouter";
 import {
   beginSpeech,
   completeSpeech,
@@ -18,7 +18,6 @@ interface SpeechPlaybackOptions {
   model: string;
   voice: string;
   messages: Message[];
-  onCost(cost: number): void;
 }
 
 interface ActiveClip {
@@ -35,7 +34,7 @@ export interface SpeechControls {
   replay(message: Message): void;
 }
 
-export function useSpeechPlayback({ apiKey, model, voice, messages, onCost }: SpeechPlaybackOptions): SpeechControls {
+export function useSpeechPlayback({ apiKey, model, voice, messages }: SpeechPlaybackOptions): SpeechControls {
   const snapshot = useSyncExternalStore(subscribeSpeech, getSpeechSnapshot, getSpeechSnapshot);
   const [active, setActiveState] = useState<ActiveClip | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -108,11 +107,6 @@ export function useSpeechPlayback({ apiKey, model, voice, messages, onCost }: Sp
       .then((result) => {
         const url = completeSpeech(message.id, requestEpoch, result.bytes);
         if (url && mounted.current && wantPlay.current === message.id) playUrl(message.id, url);
-        if (!result.generationId) return;
-        void fetchGenerationCost(apiKey, result.generationId).then((cost) => {
-          if (cost === null || speechEpoch() !== requestEpoch) return;
-          onCost(cost);
-        });
       })
       .catch((error: unknown) => {
         const detail = error instanceof Error ? error.message : "Could not play speech.";

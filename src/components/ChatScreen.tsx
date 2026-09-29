@@ -26,9 +26,9 @@ interface ChatScreenProps {
   onAppendMessage(chatKey: string, message: Message): void;
   onRemoveMessage(chatKey: string, messageId: string): void;
   onClearSide(chatKey: string, side: Side): void;
-  onAddCost(cost: number): void;
   onSettingsChange(settings: Settings): void;
   onOpenSettings(): void;
+  onRefreshCost(): void;
   onLogout(): void;
 }
 
@@ -61,9 +61,9 @@ export default function ChatScreen({
   onAppendMessage,
   onRemoveMessage,
   onClearSide,
-  onAddCost,
   onSettingsChange,
   onOpenSettings,
+  onRefreshCost,
   onLogout,
 }: ChatScreenProps) {
   const chatKey = chatKeyOf(settings);
@@ -74,7 +74,6 @@ export default function ChatScreen({
     model: settings.speechModel,
     voice: settings.speechVoice,
     messages,
-    onCost: onAddCost,
   });
 
   const [pending, setPending] = useState<Partial<Record<Side, Pending>>>({});
@@ -134,7 +133,6 @@ export default function ChatScreen({
         language,
         signal: controller.signal,
       });
-      onAddCost(check.cost);
       if (stopped(controller, side, requestId)) return;
 
       if (!check.hasErrors) {
@@ -198,7 +196,6 @@ export default function ChatScreen({
         void handle.promise.then(
           (result) => {
             if (!isCurrentRequest(side, requestId)) return;
-            onAddCost(result.cost);
             finals[index] = result.content;
             settledCount += 1;
             markSettled(index, result.content);
@@ -316,7 +313,6 @@ export default function ChatScreen({
       void handle.promise.then(
         (result) => {
           if (!isCurrentRequest(targetSide, requestId)) return;
-          onAddCost(result.cost);
           finals[index] = result.content;
           settledCount += 1;
           markSettled(index, result.content);
@@ -515,9 +511,9 @@ export default function ChatScreen({
           </div>
           <div className={styles.tools}>
             <ThemeToggle theme={theme} onToggle={onToggleTheme} />
-            <span className={styles.costChip} title="Total OpenRouter spend on this device">
+            <button type="button" className={styles.costChip} title="Click to refresh cost" onClick={onRefreshCost}>
               Σ {formatCost(totalCost)}
-            </span>
+            </button>
           </div>
           <div className={styles.session}>
             <button
