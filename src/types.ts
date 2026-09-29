@@ -15,11 +15,17 @@ export interface GrammarCheckSetting {
   right: boolean;
 }
 
+export interface TranslateSetting {
+  left: boolean;
+  right: boolean;
+}
+
 export interface Settings {
   source: string;
   target: string;
   formality: Formality;
   grammarCheck: GrammarCheckSetting;
+  translate: TranslateSetting;
   showOptions: boolean;
   translationModel: string;
   grammarModel: string;
