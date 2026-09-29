@@ -16,7 +16,7 @@ export const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 export const DECISIONS_URL = "https://openrouter.ai/api/alpha/decisions";
 export const MODELS_URL = "https://openrouter.ai/api/v1/models";
 export const SPEECH_URL = "https://openrouter.ai/api/v1/audio/speech";
-export const GENERATION_URL = "https://openrouter.ai/api/v1/generation";
+export const KEY_URL = "https://openrouter.ai/api/v1/key";
 export const AUTH_URL = "https://openrouter.ai/auth";
 export const AUTH_KEYS_URL = "https://openrouter.ai/api/v1/auth/keys";
 export const APP_KEY_LABEL = "Latte";
@@ -38,12 +38,15 @@ export const LANGUAGES: Language[] = [
   { code: "fr", name: "French", native: "Français" },
   { code: "es", name: "Spanish", native: "Español" },
   { code: "it", name: "Italian", native: "Italiano" },
+  { code: "el", name: "Greek", native: "Ελληνικά" },
   { code: "pt", name: "Portuguese", native: "Português" },
   { code: "nl", name: "Dutch", native: "Nederlands" },
   { code: "pl", name: "Polish", native: "Polski" },
   { code: "ru", name: "Russian", native: "Русский" },
   { code: "tr", name: "Turkish", native: "Türkçe" },
   { code: "ar", name: "Arabic", native: "العربية" },
+  { code: "hi", name: "Hindi", native: "हिन्दी" },
+  { code: "bn", name: "Bengali", native: "বাংলা" },
   { code: "zh", name: "Chinese", native: "中文" },
   { code: "ja", name: "Japanese", native: "日本語" },
   { code: "ko", name: "Korean", native: "한국어" },
