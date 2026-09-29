@@ -9,7 +9,7 @@ import { refreshKeyUsage, setKeyUsageListener } from "./lib/openrouter";
 import { clearSpeechFiles, dropSpeechFile, dropSpeechFiles } from "./lib/speechFiles";
 import { clearAppStorage } from "./lib/storage";
 import { applyTheme, initialTheme, storeTheme } from "./lib/theme";
-import type { ChatStore, GrammarCheckSetting, Message, Screen, Settings, Side, Theme } from "./types";
+import type { ChatStore, GrammarCheckSetting, Message, Screen, Settings, Side, Theme, TranslateSetting } from "./types";
 
 export default function App() {
   const [apiKey, setApiKey] = usePersistentState(STORAGE_KEYS.apiKey, "");
@@ -146,7 +146,8 @@ function normalizeSettings(value: unknown): Settings | null {
     source: candidate.source,
     target: candidate.target,
     formality: candidate.formality === "formal" ? "formal" : "informal",
-    grammarCheck: normalizeGrammarCheck(candidate.grammarCheck),
+    grammarCheck: normalizeSideFlags(candidate.grammarCheck),
+    translate: normalizeSideFlags(candidate.translate),
     showOptions: candidate.showOptions !== false,
     translationModel: normalizeModel(candidate.translationModel, DEFAULT_TRANSLATION_MODEL),
     grammarModel: normalizeModel(
@@ -158,7 +159,7 @@ function normalizeSettings(value: unknown): Settings | null {
   };
 }
 
-function normalizeGrammarCheck(value: unknown): GrammarCheckSetting {
+function normalizeSideFlags(value: unknown): GrammarCheckSetting & TranslateSetting {
   if (typeof value !== "object" || value === null) return { left: true, right: true };
   const candidate = value as Record<string, unknown>;
   return {

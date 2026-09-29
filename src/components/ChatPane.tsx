@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { LANGUAGES, languageName } from "../constants";
 import { normalizeMultiline, uniqueOptionIndexes } from "../lib/text";
 import type { SpeechControls } from "../hooks/useSpeechPlayback";
 import type { Message, Pending, Side } from "../types";
@@ -15,13 +16,17 @@ function optionIndexes(pending: Pending): number[] {
 
 interface ChatPaneProps {
   side: Side;
-  language: string;
+  languageCode: string;
+  otherLanguageCode: string;
   messages: Message[];
   pending?: Pending;
   inputBlocked: boolean;
   grammarCheck: boolean;
+  translate: boolean;
   onSend(text: string): void;
+  onLanguageChange(code: string): void;
   onToggleGrammarCheck(enabled: boolean): void;
+  onToggleTranslate(enabled: boolean): void;
   onPick(index: number): void;
   onPickCorrection(index: number): void;
   onSendOriginal(): void;
@@ -78,13 +83,17 @@ function SpeechButtons({ message, speech }: { message: Message; speech: SpeechCo
 
 export default function ChatPane({
   side,
-  language,
+  languageCode,
+  otherLanguageCode,
   messages,
   pending,
   inputBlocked,
   grammarCheck,
+  translate,
   onSend,
+  onLanguageChange,
   onToggleGrammarCheck,
+  onToggleTranslate,
   onPick,
   onPickCorrection,
   onSendOriginal,
@@ -99,6 +108,7 @@ export default function ChatPane({
   const listRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const copyTimer = useRef<number | null>(null);
+  const language = languageName(languageCode);
   const isBusy = pending?.status === "checking" || pending?.status === "loading";
   const networkBusy =
     pending?.status === "checking" || pending?.status === "loading" || pending?.status === "streaming";
@@ -154,11 +164,23 @@ export default function ChatPane({
     <section className={styles.pane} aria-label={`${language} conversation`}>
       <header className={styles.header}>
         <div className={styles.titleGroup}>
-          <h2>{language}</h2>
+          <select
+            className={styles.languageSelect}
+            value={languageCode}
+            onChange={(event) => onLanguageChange(event.target.value)}
+            aria-label={`${language} language`}
+          >
+            {LANGUAGES.map((option) => (
+              <option key={option.code} value={option.code} disabled={option.code === otherLanguageCode}>
+                {option.name} · {option.native}
+              </option>
+            ))}
+          </select>
           {networkBusy && <span className={styles.spinner} role="status" aria-label="Network activity" />}
         </div>
         <div className={styles.headerActions}>
           <ToggleSwitch label="Grammar" checked={grammarCheck} onChange={onToggleGrammarCheck} />
+          <ToggleSwitch label="Translate" checked={translate} onChange={onToggleTranslate} />
           <button
             type="button"
             className={styles.clearButton}

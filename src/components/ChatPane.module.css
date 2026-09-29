@@ -12,6 +12,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 10px 16px;
   border-bottom: 1px solid var(--border);
@@ -67,12 +68,21 @@
   cursor: default;
 }
 
-.header h2 {
+.languageSelect {
+  min-width: 0;
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 8px;
+  background: var(--bg);
+  color: var(--muted);
   font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--muted);
+}
+
+.languageSelect:focus {
+  border-color: var(--accent);
+  outline: none;
 }
 
 .messages {

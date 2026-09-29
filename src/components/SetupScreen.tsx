@@ -272,6 +272,7 @@ export default function SetupScreen({ initial, canCancel, onSave, onCancel }: Se
                 target,
                 formality,
                 grammarCheck: initial?.grammarCheck ?? { left: true, right: true },
+                translate: initial?.translate ?? { left: true, right: true },
                 showOptions,
                 translationModel: trimmedTranslationModel,
                 grammarModel: trimmedGrammarModel,

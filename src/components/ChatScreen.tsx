@@ -98,10 +98,26 @@ export default function ChatScreen({
     }
   }
 
+  function handleLanguageChange(side: Side, code: string) {
+    const other = side === "left" ? settings.target : settings.source;
+    if (code === other) return;
+    onSettingsChange({
+      ...settings,
+      ...(side === "left" ? { source: code } : { target: code }),
+    });
+  }
+
   function handleToggleGrammarCheck(side: Side, enabled: boolean) {
     onSettingsChange({
       ...settings,
       grammarCheck: { ...settings.grammarCheck, [side]: enabled },
+    });
+  }
+
+  function handleToggleTranslate(side: Side, enabled: boolean) {
+    onSettingsChange({
+      ...settings,
+      translate: { ...settings.translate, [side]: enabled },
     });
   }
 
@@ -348,6 +364,7 @@ export default function ChatScreen({
   async function postForTranslation(side: Side, requestId: string, text: string) {
     clearPendingIfCurrent(side, requestId);
     appendMessage(side, text);
+    if (!settings.translate[side]) return;
     await translate(side, text);
   }
 
@@ -540,13 +557,17 @@ export default function ChatScreen({
       <main className={styles.panes}>
         <ChatPane
           side="left"
-          language={languageName(settings.source)}
+          languageCode={settings.source}
+          otherLanguageCode={settings.target}
           messages={messages.filter((message) => message.side === "left")}
           pending={pending.left}
           inputBlocked={inputBlocked}
           grammarCheck={settings.grammarCheck.left}
+          translate={settings.translate.left}
           onSend={(text) => handleSend("left", text)}
+          onLanguageChange={(code) => handleLanguageChange("left", code)}
           onToggleGrammarCheck={(enabled) => handleToggleGrammarCheck("left", enabled)}
+          onToggleTranslate={(enabled) => handleToggleTranslate("left", enabled)}
           onPick={(index) => handlePick("left", index)}
           onPickCorrection={(index) => handlePickCorrection("left", index)}
           onSendOriginal={() => handleSendOriginal("left")}
@@ -558,13 +579,17 @@ export default function ChatScreen({
         />
         <ChatPane
           side="right"
-          language={languageName(settings.target)}
+          languageCode={settings.target}
+          otherLanguageCode={settings.source}
           messages={messages.filter((message) => message.side === "right")}
           pending={pending.right}
           inputBlocked={inputBlocked}
           grammarCheck={settings.grammarCheck.right}
+          translate={settings.translate.right}
           onSend={(text) => handleSend("right", text)}
+          onLanguageChange={(code) => handleLanguageChange("right", code)}
           onToggleGrammarCheck={(enabled) => handleToggleGrammarCheck("right", enabled)}
+          onToggleTranslate={(enabled) => handleToggleTranslate("right", enabled)}
           onPick={(index) => handlePick("right", index)}
           onPickCorrection={(index) => handlePickCorrection("right", index)}
           onSendOriginal={() => handleSendOriginal("right")}
