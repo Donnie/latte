@@ -18,10 +18,11 @@ A two-pane chat translator for language pairs, powered by OpenRouter. Type in ei
 ## Features
 
 - **One-click sign-in**: "Sign in with OpenRouter" creates and stores an API key automatically via OpenRouter's PKCE flow; pasting an existing key still works
-- **Any language pair**: pick a source and target language, swap them anytime, and keep a separate conversation per pair
+- **Any language pair**: pick a source and target language on the setup screen, or change either one from the dropdown in that pane’s header. The other pane’s language is disabled in the list. Swap the pair on the setup screen. Each pair keeps its own conversation
 - **Type in either pane**: write in your language or theirs; on phones the panes stack vertically
 - **Three options, or one**: with "Show options" on (the default), each message arrives as three translation alternatives; pick the best fit or tap "None of these" for three fresh attempts. Turn it off and a single proofreading or translation result is streamed and used automatically. If every alternative collapses to the same text, that text is used automatically too
 - **Optional grammar check**: a per-pane toggle that reviews your draft with a checker model; if it finds mistakes you get up to three corrected versions, and you can send as is, dismiss, or edit
+- **Optional translation**: a per-pane Translate toggle next to Grammar, on by default. Turn it off and a sent message stays in that pane, with the grammar check when that toggle is on, and no translation is requested. A translation already on screen keeps its Retry button
 - **Formal or informal**: choose the tonality your translations should carry, on the setup screen or with the Formal switch in the chat header
 - **Your models**: translation can use any OpenRouter text model, the grammar check is limited to typed decision models that answer with probabilities instead of text, and speech uses a multilingual OpenRouter speech model plus one of its voices (defaults: `z-ai/glm-5.3-flash` for translation, `~typesafe/jev-latest` for checks, `x-ai/grok-voice-tts-1.0` with the `eve` voice)
 - **Listen to any bubble**: hover a bubble and tap the speaker to play it; pause, resume, or replay while it is active. Audio is generated on demand and cached for the session
