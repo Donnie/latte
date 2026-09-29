@@ -1,6 +1,6 @@
 # ☕ Latte
 
-A two-pane chat translator for language pairs, powered by OpenRouter. Type in either pane, pick from three natural translations, and let the optional grammar check catch mistakes before anything is sent. Fully frontend: no backend, no accounts, nothing stored outside your browser.
+A two-pane chat translator for language pairs, powered by OpenRouter. Type in either pane, pick from three natural translations, let the optional grammar check catch mistakes before anything is sent, and play any message aloud. Fully frontend: no backend, no accounts, nothing stored outside your browser.
 
 ## Desktop
 
@@ -20,15 +20,17 @@ A two-pane chat translator for language pairs, powered by OpenRouter. Type in ei
 - **One-click sign-in**: "Sign in with OpenRouter" creates and stores an API key automatically via OpenRouter's PKCE flow; pasting an existing key still works
 - **Any language pair**: pick a source and target language, swap them anytime, and keep a separate conversation per pair
 - **Type in either pane**: write in your language or theirs; on phones the panes stack vertically
-- **Three options every time**: each message arrives as three translation alternatives; pick the best fit or tap "None of these" for three fresh attempts
+- **Three options, or one**: with "Show options" on (the default), each message arrives as three translation alternatives; pick the best fit or tap "None of these" for three fresh attempts. Turn it off and a single proofreading or translation result is streamed and used automatically. If every alternative collapses to the same text, that text is used automatically too
 - **Optional grammar check**: a per-pane toggle that reviews your draft with a checker model; if it finds mistakes you get up to three corrected versions, and you can send as is, dismiss, or edit
-- **Formal or informal**: choose the tonality your translations should carry
-- **Your models**: translation can use any OpenRouter text model, while the grammar check is limited to typed decision models that answer with probabilities instead of text (defaults: `z-ai/glm-5.3-flash` for translation, `~typesafe/jev-latest` for checks)
+- **Formal or informal**: choose the tonality your translations should carry, on the setup screen or with the Formal switch in the chat header
+- **Your models**: translation can use any OpenRouter text model, the grammar check is limited to typed decision models that answer with probabilities instead of text, and speech uses a multilingual OpenRouter speech model plus one of its voices (defaults: `z-ai/glm-5.3-flash` for translation, `~typesafe/jev-latest` for checks, `x-ai/grok-voice-tts-1.0` with the `eve` voice)
+- **Listen to any bubble**: hover a bubble and tap the speaker to play it; pause, resume, or replay while it is active. Audio is generated on demand, cached for the session, and its cost is added to the running total
 - **Cost transparency**: a running total of API spend sits in the header
 - **Copy any bubble**: hover a bubble and tap the copy glyph to put its text on the clipboard
 - **Light or dark**: theme toggle on the login screen and beside the cost header; starts in light mode until you choose, then your choice persists in this browser
-- **Tidy controls**: delete any bubble, clear one pane, or log out to wipe your data (your theme preference is kept)
-- **Local first**: the API key, settings, chats, and costs live in localStorage only; logging out clears them all
+- **Tidy controls**: delete any bubble, clear one pane, reopen settings, or log out to wipe your data (your theme preference is kept)
+- **Local first**: the API key, settings, chats, and costs live in localStorage only; speech audio stays in memory for the session. Logging out clears them all
+- **Installable**: the built site is a PWA, so you can add it to your home screen
 - **Errors handled**: failed requests offer a retry without losing your draft
 
 ## Use it now
@@ -52,4 +54,4 @@ Deploy: push to `main` and the included workflow builds and publishes the site. 
 
 ## Stack
 
-Vite 7, React 19, TypeScript, CSS Modules, Playwright for screenshots. No backend, no database, no tracking.
+Vite 7, React 19, TypeScript, CSS Modules, an installable PWA, Playwright for screenshots. No backend, no database, no tracking.
