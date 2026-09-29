@@ -7,7 +7,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const outDir = path.join(here, "..", "docs", "screenshots");
 fs.mkdirSync(outDir, { recursive: true });
 
-const BASE_URL = "http://localhost:4173";
+const BASE_URL = "http://localhost:5173";
 const CLEAN_MESSAGE = "Wie war dein Tag heute?";
 const SLOPPY_MESSAGE = "gestern haben wir den erster folge gesehen";
 
