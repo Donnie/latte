@@ -109,6 +109,7 @@ export default function ChatPane({
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const copyTimer = useRef<number | null>(null);
   const language = languageName(languageCode);
+  const languageNative = LANGUAGES.find((option) => option.code === languageCode)?.native ?? language;
   const isBusy = pending?.status === "checking" || pending?.status === "loading";
   const networkBusy =
     pending?.status === "checking" || pending?.status === "loading" || pending?.status === "streaming";
@@ -164,18 +165,23 @@ export default function ChatPane({
     <section className={styles.pane} aria-label={`${language} conversation`}>
       <header className={styles.header}>
         <div className={styles.titleGroup}>
-          <select
-            className={styles.languageSelect}
-            value={languageCode}
-            onChange={(event) => onLanguageChange(event.target.value)}
-            aria-label={`${language} language`}
-          >
-            {LANGUAGES.map((option) => (
-              <option key={option.code} value={option.code} disabled={option.code === otherLanguageCode}>
-                {option.name} · {option.native}
-              </option>
-            ))}
-          </select>
+          <div className={styles.languageSelectWrap}>
+            <span className={styles.languageLabel} aria-hidden="true">
+              {languageNative}
+            </span>
+            <select
+              className={styles.languageSelect}
+              value={languageCode}
+              onChange={(event) => onLanguageChange(event.target.value)}
+              aria-label={`${language} language`}
+            >
+              {LANGUAGES.map((option) => (
+                <option key={option.code} value={option.code} disabled={option.code === otherLanguageCode}>
+                  {option.name} · {option.native}
+                </option>
+              ))}
+            </select>
+          </div>
           {networkBusy && <span className={styles.spinner} role="status" aria-label="Network activity" />}
         </div>
         <div className={styles.headerActions}>
@@ -187,8 +193,18 @@ export default function ChatPane({
             onClick={onClear}
             disabled={messages.length === 0 && !pending}
             aria-label={`Clear the ${language} conversation`}
+            title={`Clear the ${language} conversation`}
           >
-            ⌫ Clear
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path
+                d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-9 0 1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
           </button>
         </div>
       </header>
