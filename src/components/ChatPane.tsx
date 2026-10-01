@@ -49,6 +49,28 @@ interface ChatPaneProps {
   speech: SpeechControls;
 }
 
+function DownloadSpeechButton({ message, speech }: { message: Message; speech: SpeechControls }) {
+  return (
+    <button
+      type="button"
+      className={styles.speech}
+      onClick={() => speech.download(message)}
+      aria-label="Download speech"
+      title="Download speech"
+    >
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path
+          d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </button>
+  );
+}
+
 function SpeechButtons({ message, speech }: { message: Message; speech: SpeechControls }) {
   const phase = speech.phase(message.id);
   if (phase === "loading") {
@@ -76,20 +98,24 @@ function SpeechButtons({ message, speech }: { message: Message; speech: SpeechCo
         >
           ↻
         </button>
+        <DownloadSpeechButton message={message} speech={speech} />
       </>
     );
   }
   const error = speech.error(message.id);
   return (
-    <button
-      type="button"
-      className={error ? `${styles.speech} ${styles.speechError}` : styles.speech}
-      onClick={() => speech.play(message)}
-      aria-label={error || "Play speech"}
-      title={error || "Play"}
-    >
-      🔊
-    </button>
+    <>
+      <button
+        type="button"
+        className={error ? `${styles.speech} ${styles.speechError}` : styles.speech}
+        onClick={() => speech.play(message)}
+        aria-label={error || "Play speech"}
+        title={error || "Play"}
+      >
+        🔊
+      </button>
+      <DownloadSpeechButton message={message} speech={speech} />
+    </>
   );
 }
 
