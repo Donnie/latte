@@ -5,6 +5,8 @@ import {
   completeSpeech,
   failSpeech,
   getSpeechSnapshot,
+  lookupSpeech,
+  retainSpeech,
   speechEpoch,
   speechFileUrl,
   subscribeSpeech,
@@ -106,24 +108,32 @@ export function useSpeechPlayback({ apiKey, model, voice, messages }: SpeechPlay
   }
 
   function fetchSpeech(message: Message): Promise<string | null> {
-    const existing = speechFileUrl(message.id);
+    const existing = speechFileUrl(message.id, model, voice);
     if (existing) return Promise.resolve(existing);
     const inflight = pendingSpeech.current.get(message.id);
     if (inflight) return inflight;
-    if (beginSpeech(message.id) !== "ready") return Promise.resolve(speechFileUrl(message.id) ?? null);
-    const requestEpoch = speechEpoch();
-    const promise = synthesizeSpeech({ apiKey, model, voice, text: message.text })
-      .then((result) => completeSpeech(message.id, requestEpoch, result.bytes))
-      .catch((error: unknown) => {
-        const detail = error instanceof Error ? error.message : "Could not play speech.";
-        failSpeech(message.id, requestEpoch, detail);
-        return null;
-      })
-      .finally(() => {
-        pendingSpeech.current.delete(message.id);
-      });
+    const promise = loadSpeech(message).finally(() => {
+      pendingSpeech.current.delete(message.id);
+    });
     pendingSpeech.current.set(message.id, promise);
     return promise;
+  }
+
+  async function loadSpeech(message: Message): Promise<string | null> {
+    const cached = await lookupSpeech(message.id, model, voice);
+    if (cached) return cached;
+    if (beginSpeech(message.id, model, voice) !== "ready") return speechFileUrl(message.id, model, voice) ?? null;
+    const requestEpoch = speechEpoch();
+    try {
+      const result = await synthesizeSpeech({ apiKey, model, voice, text: message.text });
+      const url = completeSpeech(message.id, requestEpoch, result.bytes, model, voice);
+      if (url) void retainSpeech(message.id, model, voice, result.bytes, requestEpoch);
+      return url;
+    } catch (error: unknown) {
+      const detail = error instanceof Error ? error.message : "Could not play speech.";
+      failSpeech(message.id, requestEpoch, detail);
+      return null;
+    }
   }
 
   function play(message: Message) {
@@ -164,7 +174,7 @@ export function useSpeechPlayback({ apiKey, model, voice, messages }: SpeechPlay
   }
 
   function replay(message: Message) {
-    const existing = speechFileUrl(message.id);
+    const existing = speechFileUrl(message.id, model, voice);
     if (!existing) return;
     wantPlay.current = message.id;
     playUrl(message.id, existing);
