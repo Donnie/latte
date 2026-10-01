@@ -37,6 +37,7 @@ export interface Message {
   id: string;
   side: Side;
   text: string;
+  image?: string;
   createdAt: number;
 }
 
@@ -53,6 +54,9 @@ export interface Pending {
   kind: PendingKind;
   status: "checking" | "loading" | "streaming" | "corrections" | "ready" | "error";
   sourceText: string;
+  sourceImage?: string;
+  /** Set when an image was refused before the source message was saved. */
+  held?: boolean;
   options: string[];
   settled?: boolean[];
   pickedIndex?: number;

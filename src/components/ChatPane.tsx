@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type ClipboardEvent, type ChangeEvent, type FormEvent, type KeyboardEvent } from "react";
 import { LANGUAGES, languageName } from "../constants";
+import { resizeImageFile } from "../lib/images";
 import { normalizeMultiline, uniqueOptionIndexes } from "../lib/text";
 import type { SpeechControls } from "../hooks/useSpeechPlayback";
 import type { Message, Pending, Side } from "../types";
@@ -14,6 +15,17 @@ function optionIndexes(pending: Pending): number[] {
   return uniqueOptionIndexes(pending.options);
 }
 
+function imageFileFromList(data: DataTransfer): File | null {
+  const fromFiles = Array.from(data.files).find((file) => file.type.startsWith("image/"));
+  if (fromFiles) return fromFiles;
+  for (const item of data.items) {
+    if (item.kind !== "file" || !item.type.startsWith("image/")) continue;
+    const file = item.getAsFile();
+    if (file) return file;
+  }
+  return null;
+}
+
 interface ChatPaneProps {
   side: Side;
   languageCode: string;
@@ -23,7 +35,7 @@ interface ChatPaneProps {
   inputBlocked: boolean;
   grammarCheck: boolean;
   translate: boolean;
-  onSend(text: string): void;
+  onSend(text: string, image?: string): void;
   onLanguageChange(code: string): void;
   onToggleGrammarCheck(enabled: boolean): void;
   onToggleTranslate(enabled: boolean): void;
@@ -104,9 +116,13 @@ export default function ChatPane({
   speech,
 }: ChatPaneProps) {
   const [draft, setDraft] = useState("");
+  const [attachment, setAttachment] = useState<string | null>(null);
+  const [attachError, setAttachError] = useState("");
+  const [readingImage, setReadingImage] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
   const copyTimer = useRef<number | null>(null);
   const language = languageName(languageCode);
   const languageNative = LANGUAGES.find((option) => option.code === languageCode)?.native ?? language;
@@ -150,15 +166,45 @@ export default function ChatPane({
 
   function submitDraft() {
     const text = normalizeMultiline(draft);
-    if (!text || isBusy || inputBlocked) return;
-    onSend(text);
+    if (readingImage || isBusy || inputBlocked) return;
+    if (!text && !attachment) return;
+    onSend(text, attachment ?? undefined);
     setDraft("");
+    setAttachment(null);
+    setAttachError("");
   }
 
   function handleDismiss() {
     const text = pending?.kind === "grammar" ? pending.sourceText : "";
+    const image = pending?.kind === "grammar" ? pending.sourceImage : undefined;
     onDismiss();
     if (text) setDraft(text);
+    if (image) setAttachment(image);
+  }
+
+  function handlePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
+    const file = imageFileFromList(event.clipboardData);
+    if (!file) return;
+    event.preventDefault();
+    void takeImage(file);
+  }
+
+  function handleFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (file) void takeImage(file);
+  }
+
+  async function takeImage(file: File) {
+    setAttachError("");
+    setReadingImage(true);
+    try {
+      setAttachment(await resizeImageFile(file));
+    } catch (error) {
+      setAttachError(error instanceof Error ? error.message : "Could not read that image.");
+    } finally {
+      setReadingImage(false);
+    }
   }
 
   return (
@@ -226,18 +272,21 @@ export default function ChatPane({
                 message.side === side ? `${styles.bubble} ${styles.sent}` : `${styles.bubble} ${styles.received}`
               }
             >
-              {message.text}
+              {message.image && <img className={styles.photo} src={message.image} alt="" />}
+              {message.text ? message.text : null}
             </div>
-            <SpeechButtons message={message} speech={speech} />
-            <button
-              type="button"
-              className={styles.copy}
-              onClick={() => handleCopy(message)}
-              aria-label="Copy message"
-              title="Copy"
-            >
-              {copiedId === message.id ? "✓" : "⧉"}
-            </button>
+            {message.text ? <SpeechButtons message={message} speech={speech} /> : null}
+            {message.text ? (
+              <button
+                type="button"
+                className={styles.copy}
+                onClick={() => handleCopy(message)}
+                aria-label="Copy message"
+                title="Copy"
+              >
+                {copiedId === message.id ? "✓" : "⧉"}
+              </button>
+            ) : null}
             <button
               type="button"
               className={styles.delete}
@@ -332,19 +381,67 @@ export default function ChatPane({
       </div>
 
       <form className={styles.form} onSubmit={handleSubmit}>
-        <textarea
-          ref={inputRef}
-          rows={1}
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={`Write in ${language}…`}
-          disabled={isBusy || inputBlocked}
-          aria-label={`Write in ${language}`}
-        />
-        <button type="submit" disabled={isBusy || inputBlocked || normalizeMultiline(draft) === ""}>
-          Send
-        </button>
+        {attachment && (
+          <div className={styles.attachment}>
+            <img src={attachment} alt="" />
+            <button
+              type="button"
+              className={styles.attachmentRemove}
+              onClick={() => setAttachment(null)}
+              disabled={isBusy || inputBlocked}
+              aria-label="Remove image"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+        {attachError && (
+          <p className={styles.attachError} role="alert">
+            {attachError}
+          </p>
+        )}
+        <div className={styles.composer}>
+          <button
+            type="button"
+            className={styles.attach}
+            onClick={() => fileRef.current?.click()}
+            disabled={isBusy || inputBlocked || readingImage}
+            aria-label="Attach an image"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="2" />
+              <circle cx="8.5" cy="10" r="1.5" fill="currentColor" />
+              <path d="M21 16l-5-5-8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+          <input
+            ref={fileRef}
+            className={styles.fileInput}
+            type="file"
+            accept="image/*"
+            onChange={handleFile}
+            tabIndex={-1}
+            aria-hidden="true"
+          />
+          <textarea
+            ref={inputRef}
+            rows={1}
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
+            placeholder={`Write in ${language}…`}
+            disabled={isBusy || inputBlocked}
+            aria-label={`Write in ${language}`}
+          />
+          <button
+            type="submit"
+            className={styles.send}
+            disabled={isBusy || inputBlocked || readingImage || (normalizeMultiline(draft) === "" && !attachment)}
+          >
+            Send
+          </button>
+        </div>
       </form>
     </section>
   );

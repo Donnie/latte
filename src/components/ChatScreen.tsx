@@ -3,6 +3,8 @@ import { languageName, OPTIONS_PER_REQUEST } from "../constants";
 import { soleOption } from "../lib/text";
 import {
   fetchHasGrammarErrors,
+  IMAGE_UNSUPPORTED_MESSAGE,
+  modelAcceptsImages,
   streamCorrectionOptions,
   streamTranslationOptions,
   type CompletionResult,
@@ -42,6 +44,11 @@ function otherSide(side: Side): Side {
 
 function optionCountFor(showOptions: boolean): number {
   return showOptions ? OPTIONS_PER_REQUEST : 1;
+}
+
+interface Outgoing {
+  text: string;
+  image?: string;
 }
 
 function formatCost(cost: number): string {
@@ -90,12 +97,48 @@ export default function ChatScreen({
   const pickedIndexRef = useRef<Partial<Record<Side, number>>>({});
   const inputBlocked = pending.left !== undefined || pending.right !== undefined;
 
-  async function handleSend(side: Side, text: string) {
-    if (settings.grammarCheck[side]) {
-      await grammarCheck(side, text);
-    } else {
-      await postForTranslation(side, uuid(), text);
+  async function handleSend(side: Side, text: string, image?: string) {
+    const outgoing: Outgoing = { text, image };
+    if (image && settings.translate[side]) {
+      const allowed = await ensureImageModel(side, outgoing);
+      if (!allowed) return;
     }
+    if (image || !text || !settings.grammarCheck[side]) {
+      await postForTranslation(side, uuid(), outgoing);
+      return;
+    }
+    await grammarCheck(side, text);
+  }
+
+  async function ensureImageModel(side: Side, outgoing: Outgoing): Promise<boolean> {
+    const requestId = uuid();
+    setPendingFor(side, {
+      requestId,
+      kind: "translation",
+      status: "checking",
+      sourceText: outgoing.text,
+      sourceImage: outgoing.image,
+      held: true,
+      options: [],
+      error: "",
+    });
+    const accepts = await modelAcceptsImages(settings.translationModel);
+    if (!isCurrentRequest(side, requestId)) return false;
+    if (accepts === false) {
+      setPendingFor(side, {
+        requestId,
+        kind: "translation",
+        status: "error",
+        sourceText: outgoing.text,
+        sourceImage: outgoing.image,
+        held: true,
+        options: [],
+        error: IMAGE_UNSUPPORTED_MESSAGE,
+      });
+      return false;
+    }
+    clearPendingIfCurrent(side, requestId);
+    return true;
   }
 
   function handleLanguageChange(side: Side, code: string) {
@@ -128,7 +171,7 @@ export default function ChatScreen({
     });
   }
 
-  async function grammarCheck(side: Side, text: string) {
+  async function grammarCheck(side: Side, text: string, image?: string) {
     const language = languageName(side === "left" ? settings.source : settings.target);
     const optionCount = optionCountFor(settings.showOptions);
 
@@ -139,7 +182,15 @@ export default function ChatScreen({
     abortStreams(otherSide(side));
     const requestId = uuid();
 
-    setPendingFor(side, { requestId, kind: "grammar", status: "checking", sourceText: text, options: [], error: "" });
+    setPendingFor(side, {
+      requestId,
+      kind: "grammar",
+      status: "checking",
+      sourceText: text,
+      sourceImage: image,
+      options: [],
+      error: "",
+    });
 
     try {
       const check = await fetchHasGrammarErrors({
@@ -152,7 +203,7 @@ export default function ChatScreen({
       if (stopped(controller, side, requestId)) return;
 
       if (!check.hasErrors) {
-        await postForTranslation(side, requestId, text);
+        await postForTranslation(side, requestId, { text, image });
         return;
       }
 
@@ -192,6 +243,7 @@ export default function ChatScreen({
         kind: "grammar",
         status: "streaming",
         sourceText: text,
+        sourceImage: image,
         options: Array.from({ length: optionCount }, () => ""),
         settled: Array.from({ length: optionCount }, () => false),
         error: "",
@@ -219,7 +271,7 @@ export default function ChatScreen({
             const only = soleOption(finals);
             if (only !== undefined && pickedIndexRef.current[side] === undefined) {
               delete streamsRef.current[side];
-              void postForTranslation(side, requestId, only);
+              void postForTranslation(side, requestId, { text: only, image });
               return;
             }
             markReady();
@@ -233,6 +285,7 @@ export default function ChatScreen({
               kind: "grammar",
               status: "error",
               sourceText: text,
+              sourceImage: image,
               options: [],
               error: error instanceof Error ? error.message : "Something went wrong.",
             });
@@ -248,13 +301,14 @@ export default function ChatScreen({
         kind: "grammar",
         status: "error",
         sourceText: text,
+        sourceImage: image,
         options: [],
         error: error instanceof Error ? error.message : "Something went wrong.",
       });
     }
   }
 
-  async function translate(inputSide: Side, text: string) {
+  async function translate(inputSide: Side, outgoing: Outgoing) {
     const targetSide = otherSide(inputSide);
     const sourceLanguage = languageName(inputSide === "left" ? settings.source : settings.target);
     const targetLanguage = languageName(inputSide === "left" ? settings.target : settings.source);
@@ -270,7 +324,8 @@ export default function ChatScreen({
       requestId,
       kind: "translation",
       status: "streaming",
-      sourceText: text,
+      sourceText: outgoing.text,
+      sourceImage: outgoing.image,
       options: Array.from({ length: optionCount }, () => ""),
       settled: Array.from({ length: optionCount }, () => false),
       error: "",
@@ -317,7 +372,8 @@ export default function ChatScreen({
         {
           apiKey,
           model: settings.translationModel,
-          text,
+          text: outgoing.text,
+          image: outgoing.image,
           sourceLanguage,
           targetLanguage,
           formality: settings.formality,
@@ -350,7 +406,8 @@ export default function ChatScreen({
             requestId,
             kind: "translation",
             status: "error",
-            sourceText: text,
+            sourceText: outgoing.text,
+            sourceImage: outgoing.image,
             options: [],
             error: error instanceof Error ? error.message : "Something went wrong.",
           });
@@ -361,21 +418,26 @@ export default function ChatScreen({
     streamsRef.current[targetSide] = { requestId, kind: "translation", aborts, promises };
   }
 
-  async function postForTranslation(side: Side, requestId: string, text: string) {
+  async function postForTranslation(side: Side, requestId: string, outgoing: Outgoing) {
     clearPendingIfCurrent(side, requestId);
-    appendMessage(side, text);
+    appendMessage(side, outgoing.text, outgoing.image);
     if (!settings.translate[side]) return;
-    await translate(side, text);
+    await translate(side, outgoing);
   }
 
   async function handleRetry(side: Side) {
     const state = pending[side];
     if (!state) return;
     if (state.kind === "grammar") {
-      await grammarCheck(side, state.sourceText);
-    } else {
-      await translate(otherSide(side), state.sourceText);
+      await grammarCheck(side, state.sourceText, state.sourceImage);
+      return;
     }
+    const outgoing = { text: state.sourceText, image: state.sourceImage };
+    if (state.held) {
+      await handleSend(side, outgoing.text, outgoing.image);
+      return;
+    }
+    await translate(otherSide(side), outgoing);
   }
 
   function handlePick(targetSide: Side, index: number) {
@@ -429,7 +491,7 @@ export default function ChatScreen({
         (result) => {
           if (!isCurrentRequest(side, entry.requestId)) return;
           delete streamsRef.current[side];
-          void postForTranslation(side, entry.requestId, result.content);
+          void postForTranslation(side, entry.requestId, { text: result.content, image: state.sourceImage });
         },
         () => {
           /* cleared or superseded mid-stream — the creation-time handler owns error UI */
@@ -438,7 +500,7 @@ export default function ChatScreen({
       return;
     }
     if (state.options[index]) {
-      void postForTranslation(side, state.requestId, state.options[index]);
+      void postForTranslation(side, state.requestId, { text: state.options[index], image: state.sourceImage });
     }
   }
 
@@ -446,7 +508,7 @@ export default function ChatScreen({
     const state = pending[side];
     if (!state) return;
     abortStreams(side);
-    void postForTranslation(side, state.requestId, state.sourceText);
+    void postForTranslation(side, state.requestId, { text: state.sourceText, image: state.sourceImage });
   }
 
   function handleClear(side: Side) {
@@ -454,8 +516,14 @@ export default function ChatScreen({
     onClearSide(chatKey, side);
   }
 
-  function appendMessage(side: Side, text: string) {
-    onAppendMessage(chatKey, { id: uuid(), side, text, createdAt: Date.now() });
+  function appendMessage(side: Side, text: string, image?: string) {
+    onAppendMessage(chatKey, {
+      id: uuid(),
+      side,
+      text,
+      ...(image ? { image } : {}),
+      createdAt: Date.now(),
+    });
   }
 
   function stopped(controller: AbortController, side: Side, requestId: string): boolean {
@@ -564,7 +632,7 @@ export default function ChatScreen({
           inputBlocked={inputBlocked}
           grammarCheck={settings.grammarCheck.left}
           translate={settings.translate.left}
-          onSend={(text) => handleSend("left", text)}
+          onSend={(text, image) => handleSend("left", text, image)}
           onLanguageChange={(code) => handleLanguageChange("left", code)}
           onToggleGrammarCheck={(enabled) => handleToggleGrammarCheck("left", enabled)}
           onToggleTranslate={(enabled) => handleToggleTranslate("left", enabled)}
@@ -586,7 +654,7 @@ export default function ChatScreen({
           inputBlocked={inputBlocked}
           grammarCheck={settings.grammarCheck.right}
           translate={settings.translate.right}
-          onSend={(text) => handleSend("right", text)}
+          onSend={(text, image) => handleSend("right", text, image)}
           onLanguageChange={(code) => handleLanguageChange("right", code)}
           onToggleGrammarCheck={(enabled) => handleToggleGrammarCheck("right", enabled)}
           onToggleTranslate={(enabled) => handleToggleTranslate("right", enabled)}
