@@ -459,10 +459,17 @@
 
 .form {
   display: flex;
-  align-items: flex-end;
+  flex-direction: column;
+  align-items: stretch;
   gap: 8px;
   padding: 10px;
   border-top: 1px solid var(--border);
+}
+
+.composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
 }
 
 .form textarea {
@@ -489,7 +496,84 @@
   opacity: 0.6;
 }
 
-.form button {
+.fileInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+.attach {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--muted);
+}
+
+.attach:hover:not(:disabled) {
+  color: var(--ink);
+  border-color: var(--accent);
+}
+
+.attach:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.attachment {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.attachment img {
+  width: 72px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.attachmentRemove {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--muted);
+  line-height: 1;
+}
+
+.attachmentRemove:hover:not(:disabled) {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.attachmentRemove:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.attachError {
+  margin: 0;
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.send {
   flex-shrink: 0;
   border: none;
   background: var(--accent);
@@ -499,11 +583,23 @@
   font-weight: 600;
 }
 
-.form button:disabled {
+.send:disabled {
   opacity: 0.45;
   cursor: default;
 }
 
-.form button:hover:not(:disabled) {
+.send:hover:not(:disabled) {
   background: var(--accent-strong);
+}
+
+.photo {
+  display: block;
+  max-width: min(100%, 280px);
+  max-height: 220px;
+  object-fit: contain;
+  border-radius: 10px;
+}
+
+.photo:not(:last-child) {
+  margin-bottom: 6px;
 }

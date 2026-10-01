@@ -1,6 +1,6 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { OpenRouterError, fetchSpeechCatalog, refreshKeyUsage, setKeyUsageListener, streamCorrectionOptions, streamTranslationOptions, synthesizeSpeech } from "./openrouter";
+import { OpenRouterError, fetchSpeechCatalog, IMAGE_UNSUPPORTED_MESSAGE, modelAcceptsImages, refreshKeyUsage, resetModelCatalogCache, setKeyUsageListener, streamCorrectionOptions, streamTranslationOptions, synthesizeSpeech } from "./openrouter";
 
 function sseResponse(events: string[], status = 200): Response {
   const stream = new ReadableStream<Uint8Array>({
@@ -132,6 +132,64 @@ describe("streamTranslationOptions", () => {
     const handle = streamTranslationOptions(request, () => {});
 
     await expect(handle.promise).rejects.toThrow(/Rate limited/);
+  });
+
+  it("sends an image as multimodal content and keeps text-only content a string", async () => {
+    const bodies: Array<{ messages?: Array<{ content: unknown }> }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        bodies.push(JSON.parse(String(init?.body)) as { messages?: Array<{ content: unknown }> });
+        return sseResponse(['data: {"choices":[{"delta":{"content":"Hallo"}}]}\n\n', "data: [DONE]\n\n"]);
+      }),
+    );
+
+    await streamTranslationOptions(request, () => {}).promise;
+    await streamTranslationOptions(
+      { ...request, text: "  ", image: "data:image/jpeg;base64,abc" },
+      () => {},
+    ).promise;
+
+    expect(bodies[0]?.messages?.[1]?.content).toBe("hello\nworld");
+    expect(bodies[0]?.messages?.[0]?.content).not.toEqual(expect.stringContaining("readable text"));
+    expect(bodies[1]?.messages?.[1]?.content).toEqual([
+      { type: "text", text: "Translate the image." },
+      { type: "image_url", image_url: { url: "data:image/jpeg;base64,abc" } },
+    ]);
+    expect(bodies[1]?.messages?.[0]?.content).toEqual(expect.stringContaining("readable text"));
+  });
+
+  it.each([
+    ["No endpoints found that support image input", 404],
+    ["This model does not support image inputs", 400],
+    ["The model does not support the requested input modalities", 400],
+  ])("maps image rejection %j to a model message", async (message, status) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(JSON.stringify({ error: { message } }), {
+          status,
+          statusText: "Bad Request",
+        }),
+      ),
+    );
+
+    const handle = streamTranslationOptions({ ...request, image: "data:image/jpeg;base64,abc" }, () => {});
+
+    await expect(handle.promise).rejects.toThrow(IMAGE_UNSUPPORTED_MESSAGE);
+  });
+
+  it("maps a streamed image rejection to the same model message", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        sseResponse(['data: {"error":{"message":"This model does not support image inputs"}}\n\n']),
+      ),
+    );
+
+    const handle = streamTranslationOptions({ ...request, image: "data:image/jpeg;base64,abc" }, () => {});
+
+    await expect(handle.promise).rejects.toThrow(IMAGE_UNSUPPORTED_MESSAGE);
   });
 });
 
@@ -362,5 +420,38 @@ describe("fetchSpeechCatalog", () => {
       { id: "google/gemini-tts", name: "Gemini TTS", voices: ["Kore", "Puck"] },
       { id: "x-ai/grok-voice-tts-1.0", name: "Grok Voice", voices: ["eve", "ara"] },
     ]);
+  });
+});
+
+describe("modelAcceptsImages", () => {
+  afterEach(() => {
+    resetModelCatalogCache();
+    vi.unstubAllGlobals();
+  });
+
+  it("is true only when the catalog lists image input", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            data: [
+              { id: "vision", architecture: { input_modalities: ["text", "image"] } },
+              { id: "text-only", architecture: { input_modalities: ["text"] } },
+            ],
+          }),
+        ),
+      ),
+    );
+
+    await expect(modelAcceptsImages("vision")).resolves.toBe(true);
+    await expect(modelAcceptsImages("text-only")).resolves.toBe(false);
+    await expect(modelAcceptsImages("missing")).resolves.toBe(false);
+  });
+
+  it("is null when the catalog cannot be read", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("nope", { status: 500 })));
+
+    await expect(modelAcceptsImages("vision")).resolves.toBeNull();
   });
 });

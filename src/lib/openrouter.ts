@@ -4,6 +4,9 @@ import type { Formality } from "../types";
 
 export class OpenRouterError extends Error {}
 
+export const IMAGE_UNSUPPORTED_MESSAGE =
+  "This model does not accept images. Choose a vision-capable translation model in settings.";
+
 export type ModelKind = "text" | "decisions" | "speech";
 
 interface RequestBase {
@@ -14,6 +17,7 @@ interface RequestBase {
 interface TranslationRequest extends RequestBase {
   model: string;
   text: string;
+  image?: string;
   sourceLanguage: string;
   targetLanguage: string;
   formality: Formality;
@@ -25,9 +29,13 @@ interface ProofreadRequest extends RequestBase {
   language: string;
 }
 
+type MessageContent =
+  | string
+  | Array<{ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } }>;
+
 interface ChatMessage {
   role: "system" | "user";
-  content: string;
+  content: MessageContent;
 }
 
 interface OpenRouterResponse {
@@ -44,7 +52,7 @@ interface ModelSummary {
   id?: unknown;
   name?: unknown;
   description?: unknown;
-  architecture?: { output_modalities?: unknown };
+  architecture?: { output_modalities?: unknown; input_modalities?: unknown };
   supported_voices?: unknown;
 }
 
@@ -66,6 +74,52 @@ type KeyUsageListener = (apiKey: string, usage: number) => void;
 
 let keyUsageListener: KeyUsageListener | null = null;
 let keyUsageRead = 0;
+let modalityCache: Map<string, boolean> | null = null;
+let modalityFlight: Promise<Map<string, boolean>> | null = null;
+
+export function resetModelCatalogCache(): void {
+  modalityCache = null;
+  modalityFlight = null;
+}
+
+/** True when the model lists image input, false when it does not, null when the catalog cannot be read. */
+export async function modelAcceptsImages(modelId: string): Promise<boolean | null> {
+  try {
+    const catalog = await loadImageModalities();
+    return catalog.get(modelId) === true;
+  } catch {
+    return null;
+  }
+}
+
+async function loadImageModalities(): Promise<Map<string, boolean>> {
+  if (modalityCache) return modalityCache;
+  if (!modalityFlight) {
+    modalityFlight = fetchImageModalities().finally(() => {
+      modalityFlight = null;
+    });
+  }
+  return modalityFlight;
+}
+
+async function fetchImageModalities(): Promise<Map<string, boolean>> {
+  const response = await fetch(MODELS_URL);
+  if (!response.ok) {
+    throw new OpenRouterError("Could not load models.");
+  }
+  const payload = (await response.json()) as { data?: ModelSummary[] };
+  if (!Array.isArray(payload.data)) {
+    throw new OpenRouterError("Unexpected response from OpenRouter.");
+  }
+  const catalog = new Map<string, boolean>();
+  for (const model of payload.data) {
+    if (typeof model.id !== "string" || model.id.length === 0) continue;
+    const modalities = model.architecture?.input_modalities;
+    catalog.set(model.id, Array.isArray(modalities) && modalities.includes("image"));
+  }
+  modalityCache = catalog;
+  return catalog;
+}
 
 export function setKeyUsageListener(listener: KeyUsageListener | null): void {
   keyUsageListener = listener;
@@ -276,7 +330,7 @@ export function streamTranslationOptions(
     request,
     [
       { role: "system", content: buildTranslationPrompt(request) },
-      { role: "user", content: request.text },
+      { role: "user", content: userContent(request) },
     ],
     0.8,
     onDelta,
@@ -309,11 +363,25 @@ function buildTranslationPrompt(request: TranslationRequest): string {
     `Translate the user's text from ${request.sourceLanguage} into ${request.targetLanguage}.`,
     `Use a ${register} register.`,
     "Give exactly one translation: natural and idiomatic.",
+    ...(request.image
+      ? [
+          "If the user includes an image, translate every piece of readable text in it into the target language; if the image has no readable text, briefly describe the image in that language, and also translate any caption.",
+        ]
+      : []),
     "The user's text may contain several lines or paragraphs; keep the same line breaks and paragraph structure.",
     "Keep names, numbers, URLs and code unchanged.",
     NO_EM_DASH_RULE,
     "Reply with the translation only: no preamble, no quotes around it, no explanations.",
   ].join(" ");
+}
+
+function userContent(request: TranslationRequest): MessageContent {
+  if (!request.image) return request.text;
+  const caption = request.text.trim().length > 0 ? request.text : "Translate the image.";
+  return [
+    { type: "text", text: caption },
+    { type: "image_url", image_url: { url: request.image } },
+  ];
 }
 
 function buildHeaders(apiKey: string): HeadersInit {
@@ -395,7 +463,8 @@ async function readCompletionBody(body: ReadableStream<Uint8Array>, onDelta: (fu
       return "continue";
     }
     if (chunk.error) {
-      throw new OpenRouterError(chunk.error.message ?? "OpenRouter returned an error.");
+      const message = chunk.error.message ?? "OpenRouter returned an error.";
+      throw new OpenRouterError(friendlyImageError(message) ?? message);
     }
     const delta = chunk.choices?.[0]?.delta?.content;
     if (typeof delta === "string" && delta.length > 0) {
@@ -440,8 +509,15 @@ async function describeHttpError(response: Response): Promise<string> {
   } catch {
     return detail;
   }
+  const friendly = friendlyImageError(detail);
+  if (friendly) return friendly;
   if (response.status === 401) return `Invalid API key — ${detail}`;
   return `OpenRouter error ${response.status} — ${detail}`;
+}
+
+function friendlyImageError(detail: string): string | null {
+  if (/does not support image|image input|input modalit/i.test(detail)) return IMAGE_UNSUPPORTED_MESSAGE;
+  return null;
 }
 
 function stripEmDashes(text: string): string {
